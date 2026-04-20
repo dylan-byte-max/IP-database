@@ -38,11 +38,11 @@ const studioData = computed(() => {
   })).sort((a, b) => b.projects.length - a.projects.length)
 })
 
-// ===== Platform Analysis =====
-const platformData = computed(() => {
+// ===== Platform Analysis (split novel / anime) =====
+function buildPlatformMap(items, getPlats) {
   const map = {}
-  ipList.value.forEach(ip => {
-    const plats = ip.type === 'anime' ? (ip.broadcast_platforms || []) : (ip.platform ? [ip.platform] : [])
+  items.forEach(ip => {
+    const plats = getPlats(ip)
     plats.forEach(p => {
       if (!map[p]) map[p] = { name: p, projects: [], totalScore: 0, scoreCount: 0 }
       map[p].projects.push(ip)
@@ -53,7 +53,21 @@ const platformData = computed(() => {
     ...p,
     avgScore: p.scoreCount ? (p.totalScore / p.scoreCount).toFixed(1) : null,
   })).sort((a, b) => b.projects.length - a.projects.length)
-})
+}
+
+const novelPlatformData = computed(() =>
+  buildPlatformMap(
+    ipList.value.filter(ip => ip.type === 'novel'),
+    ip => ip.platform ? [ip.platform] : []
+  )
+)
+
+const animePlatformData = computed(() =>
+  buildPlatformMap(
+    ipList.value.filter(ip => ip.type === 'anime'),
+    ip => ip.broadcast_platforms || []
+  )
+)
 
 // ===== Genre Analysis =====
 const genreData = computed(() => {
@@ -315,28 +329,67 @@ function getScoreColor(score) {
       </div>
 
       <!-- Platform View -->
-      <div v-if="activeView === 'platform'" class="space-y-4">
-        <div v-if="platformData.length === 0" class="text-center py-10 text-gray-500">暂无平台数据</div>
-        <div v-for="plat in platformData" :key="plat.name"
-          class="bg-[#14142a] border border-white/5 rounded-xl p-5">
-          <div class="flex items-center justify-between mb-3">
-            <div>
-              <h3 class="text-lg font-bold text-white">📺 {{ plat.name }}</h3>
-              <span class="text-sm text-gray-400">{{ plat.projects.length }} 部作品
-                <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
-              </span>
+      <div v-if="activeView === 'platform'" class="space-y-6">
+        <div v-if="novelPlatformData.length === 0 && animePlatformData.length === 0" class="text-center py-10 text-gray-500">暂无平台数据</div>
+
+        <!-- Novel Platforms -->
+        <div v-if="novelPlatformData.length > 0">
+          <h2 class="text-lg font-bold text-purple-300 mb-3 flex items-center gap-2">
+            <span>📖</span> 小说连载平台
+          </h2>
+          <div class="space-y-3">
+            <div v-for="plat in novelPlatformData" :key="'novel-'+plat.name"
+              class="bg-[#14142a] border border-white/5 rounded-xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <h3 class="text-lg font-bold text-white">📚 {{ plat.name }}</h3>
+                  <span class="text-sm text-gray-400">{{ plat.projects.length }} 部作品
+                    <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
+                  </span>
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <div v-for="ip in plat.projects" :key="ip.id"
+                  @click="goDetail(ip.id)"
+                  class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">📖</span>
+                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                  <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="space-y-1.5">
-            <div v-for="ip in plat.projects" :key="ip.id"
-              @click="goDetail(ip.id)"
-              class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
-              <span class="text-xs px-1.5 py-0.5 rounded"
-                :class="ip.type === 'novel' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'">
-                {{ ip.type === 'novel' ? '📖' : '🎬' }}
-              </span>
-              <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-              <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
+        </div>
+
+        <!-- Anime Platforms -->
+        <div v-if="animePlatformData.length > 0">
+          <h2 class="text-lg font-bold text-blue-300 mb-3 flex items-center gap-2">
+            <span>🎬</span> 动漫播出平台
+          </h2>
+          <div class="space-y-3">
+            <div v-for="plat in animePlatformData" :key="'anime-'+plat.name"
+              class="bg-[#14142a] border border-white/5 rounded-xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <h3 class="text-lg font-bold text-white">📺 {{ plat.name }}</h3>
+                  <span class="text-sm text-gray-400">{{ plat.projects.length }} 部作品
+                    <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
+                  </span>
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <div v-for="ip in plat.projects" :key="ip.id"
+                  @click="goDetail(ip.id)"
+                  class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                  <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">🎬</span>
+                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                  <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
+                    :class="ip.production_tier.includes('S') ? 'bg-yellow-500/15 text-yellow-300' : ip.production_tier.includes('A') ? 'bg-green-500/15 text-green-300' : 'bg-gray-500/15 text-gray-400'">
+                    {{ ip.production_tier }}
+                  </span>
+                  <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
