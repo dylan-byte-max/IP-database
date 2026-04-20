@@ -175,9 +175,10 @@ function parseMdReport(md) {
     } else {
       // Clean platform: remove parenthetical like （首发）
       if (field === 'platform') {
-        val = val.replace(/[（(].*?[）)]/g, '').trim()
+        result[field] = val.replace(/[（(].*?[）)]/g, '').trim()
+      } else {
+        if (!result[field]) result[field] = val
       }
-      if (!result[field]) result[field] = val
     }
   }
 
