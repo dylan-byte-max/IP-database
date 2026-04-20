@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #1a1a2e; }
+::-webkit-scrollbar-thumb { background: #4a4a6a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #6a6a8a; }
+
+/* Markdown content styles */
+.markdown-body { line-height: 1.8; color: #e0e0e0; }
+.markdown-body h1 { font-size: 1.8rem; font-weight: 700; margin: 1.5rem 0 1rem; color: #fff; border-bottom: 1px solid #333; padding-bottom: 0.5rem; }
+.markdown-body h2 { font-size: 1.4rem; font-weight: 600; margin: 1.2rem 0 0.8rem; color: #c0a0ff; }
+.markdown-body h3 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 0.6rem; color: #80c0ff; }
+.markdown-body p { margin: 0.6rem 0; }
+.markdown-body ul, .markdown-body ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+.markdown-body li { margin: 0.3rem 0; }
+.markdown-body table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.9rem; }
+.markdown-body th { background: #2a2a4a; color: #c0a0ff; padding: 0.6rem 0.8rem; text-align: left; border: 1px solid #3a3a5a; font-weight: 600; }
+.markdown-body td { padding: 0.5rem 0.8rem; border: 1px solid #3a3a5a; }
+.markdown-body tr:hover td { background: #1e1e3a; }
+.markdown-body blockquote { border-left: 3px solid #6a5acd; padding: 0.5rem 1rem; margin: 0.8rem 0; background: #1a1a3a; border-radius: 0 6px 6px 0; color: #b0b0d0; }
+.markdown-body code { background: #2a2a4a; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: #80ffc0; }
+.markdown-body pre { background: #1a1a2e; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0.8rem 0; }
+.markdown-body pre code { background: none; padding: 0; }
+.markdown-body a { color: #80b0ff; text-decoration: underline; }
+.markdown-body hr { border: none; border-top: 1px solid #333; margin: 1.5rem 0; }
+.markdown-body strong { color: #fff; }
+.markdown-body em { color: #c0c0e0; }
