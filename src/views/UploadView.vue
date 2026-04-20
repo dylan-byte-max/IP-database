@@ -70,20 +70,56 @@ async function processFile(file) {
 function parseMdReport(md) {
   const result = {}
 
-  // Detect type
-  if (md.includes('深度研究报告') && (md.includes('制作团队') || md.includes('播出平台') || md.includes('各季详情'))) {
-    result.type = 'anime'
-  } else if (md.includes('深度研究报告') && (md.includes('影视化改编') || md.includes('作者档案'))) {
-    result.type = 'novel'
-  } else {
-    result.type = md.includes('🎬') ? 'anime' : 'novel'
+  // Helper: clean markdown formatting from a value
+  function clean(val) {
+    if (!val) return ''
+    return val.replace(/\*+/g, '').replace(/^《|》$/g, '').replace(/^[《]|[》]$/g, '').trim()
   }
 
-  // Extract name from title
-  const titleMatch = md.match(/^#\s+[📖🎬]\s*《(.+?)》/m)
-  if (titleMatch) result.name = titleMatch[1]
+  // Helper: extract a score (number) from a string like "**8.5**/10", "8.5/10", "约5.5-6.0", "8.5", "⭐3.4/5"
+  function extractScore(str) {
+    if (!str) return null
+    const cleaned = str.replace(/\*+/g, '').replace(/⭐/g, '').trim()
+    // Match patterns: "8.5/10", "8.5", "约5.5-6.0" (take first number), "3.4/5"
+    const m = cleaned.match(/([\d.]+)/)
+    return m ? parseFloat(m[1]) : null
+  }
 
-  // Extract table fields
+  // Helper: extract table cell value by row label (flexible matching)
+  function getTableValue(label) {
+    // Try multiple patterns for table matching
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&')
+    // Pattern 1: | label | value |
+    const re1 = new RegExp(`\\|\\s*${escapedLabel}\\s*\\|\\s*(.+?)\\s*\\|`, 'm')
+    const m1 = md.match(re1)
+    if (m1) return clean(m1[1])
+    // Pattern 2: | label | value | (with possible extra columns)
+    const re2 = new RegExp(`\\|\\s*${escapedLabel}\\s*\\|\\s*(.+?)\\s*\\|`, 'mi')
+    const m2 = md.match(re2)
+    if (m2) return clean(m2[1])
+    return null
+  }
+
+  // ===== Detect type =====
+  if (md.includes('制作团队') || md.includes('播出平台') || md.includes('各季详情') || md.includes('🎬')) {
+    result.type = 'anime'
+  } else {
+    result.type = 'novel'
+  }
+
+  // ===== Extract name from title =====
+  // Try multiple title formats
+  const titlePatterns = [
+    /^#\s+.*?《(.+?)》/m,
+    /^#\s+.*?[《「](.+?)[》」]/m,
+    /^#\s+(.+?)深度研究/m,
+  ]
+  for (const p of titlePatterns) {
+    const m = md.match(p)
+    if (m) { result.name = clean(m[1]); break }
+  }
+
+  // ===== Extract table fields =====
   const tableFields = {
     '作品全名': 'name', '中文名': 'name',
     '作者': 'author', '笔名': 'author',
@@ -93,64 +129,138 @@ function parseMdReport(md) {
     '总季数': 'total_seasons', '总集数': 'total_episodes',
     '制作水准': 'production_tier',
     '原著类型': 'source_type', '原著名称': 'source_name',
+    '类型': '_genre', '标签': '_tags',
+    '状态': '_status',
+    '总字数': '_wordcount',
   }
 
   for (const [label, field] of Object.entries(tableFields)) {
-    const re = new RegExp(`\\|\\s*${label.replace(/[/]/g, '\\/')}\\s*\\|\\s*(.+?)\\s*\\|`, 'm')
-    const m = md.match(re)
-    if (m) {
-      let val = m[1].replace(/^《|》$/g, '').trim()
-      if (field === 'total_seasons' || field === 'total_episodes') {
-        val = parseInt(val) || null
+    const val = getTableValue(label)
+    if (!val) continue
+
+    if (field === 'total_seasons' || field === 'total_episodes') {
+      result[field] = parseInt(val) || null
+    } else if (field === 'production_tier') {
+      result[field] = val.replace(/级$/, '').trim()
+    } else if (field === 'name') {
+      let n = val.replace(/^《|》$/g, '').replace(/^[《]|[》]$/g, '').trim()
+      // Don't overwrite if already set from title and this is less clean
+      if (!result.name || n.length < result.name.length) result.name = n
+    } else if (field === '_tags') {
+      // Extract genre tags from 标签 field
+      if (!result.genre_tags || result.genre_tags.length === 0) {
+        result.genre_tags = val.split(/[、,，·\s]+/).map(s => s.trim()).filter(s => s && s.length < 10)
       }
-      if (field === 'production_tier') {
-        val = val.replace(/级$/, '').trim()
+    } else if (field === '_genre') {
+      // Use 类型 field as fallback for genre_tags
+      if (!result.genre_tags || result.genre_tags.length === 0) {
+        result.genre_tags = val.split(/[、,，·\s]+/).map(s => s.trim()).filter(s => s && s.length < 10)
       }
-      if (field === 'name' && val.startsWith('《') && val.endsWith('》')) {
-        val = val.slice(1, -1)
-      }
-      result[field] = val
+    } else if (field.startsWith('_')) {
+      // skip internal fields
+    } else {
+      if (!result[field]) result[field] = val
     }
   }
 
-  // Extract douban score
-  const doubanMatch = md.match(/豆瓣\s*\|\s*([\d.]+)/m)
-  if (doubanMatch) result.douban_score = parseFloat(doubanMatch[1])
+  // ===== Extract scores (multiple strategies) =====
 
-  // Extract bangumi score
-  const bangumiMatch = md.match(/Bangumi\s*\|\s*([\d.]+)/m)
-  if (bangumiMatch) result.bangumi_score = parseFloat(bangumiMatch[1])
+  // Douban score - try multiple patterns
+  const doubanPatterns = [
+    /豆瓣[^|]*\|\s*\*?\*?([\d.]+)\*?\*?\s*[/／]/m,        // | 豆瓣 | **8.5**/10 |
+    /豆瓣[^|]*\|\s*\*?\*?([\d.]+)/m,                        // | 豆瓣 | 8.5 |
+    /豆瓣[^|]*\|\s*约?([\d.]+)/m,                           // | 豆瓣 | 约5.5 |
+    /豆瓣评分[：:]\s*\*?\*?([\d.]+)/m,                      // 豆瓣评分：8.5
+    /豆瓣\s*[:：]?\s*\*?\*?([\d.]+)/m,                      // 豆瓣 8.5
+  ]
+  for (const p of doubanPatterns) {
+    const m = md.match(p)
+    if (m) { result.douban_score = parseFloat(m[1]); break }
+  }
 
-  // Extract yousuu score
-  const yousuuMatch = md.match(/优书网\s*\|\s*([\d.]+)/m)
-  if (yousuuMatch) result.yousuu_score = parseFloat(yousuuMatch[1])
+  // Bangumi score
+  const bangumiPatterns = [
+    /[Bb]angumi[^|]*\|\s*\*?\*?([\d.]+)/m,
+    /[Bb]angumi\s*[:：]?\s*\*?\*?([\d.]+)/m,
+  ]
+  for (const p of bangumiPatterns) {
+    const m = md.match(p)
+    if (m) { result.bangumi_score = parseFloat(m[1]); break }
+  }
 
-  // Extract adaptation score
-  const adaptMatch = md.match(/综合得分\s*\|\s*\*?\*?⭐?([\d.]+)/m)
-  if (adaptMatch) result.adaptation_score = parseFloat(adaptMatch[1])
+  // Yousuu score
+  const yousuuPatterns = [
+    /优书网[^|]*\|\s*\*?\*?([\d.]+)/m,
+    /优书网\s*[:：]?\s*\*?\*?([\d.]+)/m,
+  ]
+  for (const p of yousuuPatterns) {
+    const m = md.match(p)
+    if (m) { result.yousuu_score = parseFloat(m[1]); break }
+  }
 
-  // Extract AI summary (整体定位)
-  const summaryMatch = md.match(/整体定位\s*\|\s*\*?\*?(.+?)\*?\*?\s*\|/m)
-  if (summaryMatch) result.ai_summary = summaryMatch[1].replace(/\*+/g, '').trim()
+  // Adaptation score (综合得分)
+  const adaptPatterns = [
+    /综合得分\s*\|\s*\*?\*?⭐?\s*([\d.]+)/m,
+    /综合得分.*?([\d.]+)\s*[/／]\s*5/m,
+    /\*?\*?⭐?([\d.]+)[/／]5\*?\*?.*加权/m,
+  ]
+  for (const p of adaptPatterns) {
+    const m = md.match(p)
+    if (m) { result.adaptation_score = parseFloat(m[1]); break }
+  }
 
-  // Extract broadcast platforms
+  // ===== Extract AI summary (整体定位) =====
+  const summaryPatterns = [
+    /整体定位\s*\|\s*\*?\*?(.+?)\*?\*?\s*\|/m,
+    /整体定位.*?\|\s*\*?\*?(.+?)\*?\*?\s*$/m,
+    /\*\*整体定位\*\*\s*[|：:]\s*\*?\*?(.+?)(\*?\*?\s*\||$)/m,
+  ]
+  for (const p of summaryPatterns) {
+    const m = md.match(p)
+    if (m) {
+      result.ai_summary = clean(m[1]).substring(0, 200)
+      break
+    }
+  }
+
+  // ===== Extract genre tags (multiple sources) =====
+  if (!result.genre_tags || result.genre_tags.length === 0) {
+    // Try "题材" row in tag table
+    const tagMatch = md.match(/题材\s*\|\s*(.+?)\s*\|/m)
+    if (tagMatch) {
+      result.genre_tags = tagMatch[1].split(/[、,，·]/).map(s => s.replace(/[{}\[\]]/g, '').trim()).filter(s => s && s.length < 10)
+    }
+  }
+  if (!result.genre_tags || result.genre_tags.length === 0) {
+    // Try "标签" row in basic info table
+    const labelMatch = md.match(/标签\s*\|\s*(.+?)\s*\|/m)
+    if (labelMatch) {
+      result.genre_tags = labelMatch[1].split(/[、,，·\s]+/).map(s => s.trim()).filter(s => s && s.length < 10)
+    }
+  }
+  // Also try to add from "类型" field
+  if (result.genre_tags && result.genre_tags.length > 0) {
+    const typeMatch = md.match(/类型\s*\|\s*(.+?)\s*\|/m)
+    if (typeMatch) {
+      const typeVals = clean(typeMatch[1]).split(/[、,，·\s]+/).map(s => s.trim()).filter(s => s && s.length < 10)
+      const existing = new Set(result.genre_tags)
+      typeVals.forEach(t => { if (!existing.has(t)) result.genre_tags.push(t) })
+    }
+  }
+
+  // ===== Extract broadcast platforms (anime) =====
   const platformSection = md.match(/中国\s*\|\s*(.+?)\s*(\||$)/m)
   if (platformSection) {
     const plats = platformSection[1]
       .replace(/（.+?）/g, '')
+      .replace(/\(.+?\)/g, '')
       .split(/[/、,，]/)
       .map(s => s.trim())
       .filter(Boolean)
     result.broadcast_platforms = plats
   }
 
-  // Extract genre tags
-  const tagMatch = md.match(/题材\s*\|\s*(.+?)\s*\|/m)
-  if (tagMatch) {
-    result.genre_tags = tagMatch[1].split(/[、,，]/).map(s => s.replace(/\{|\}/g, '').trim()).filter(Boolean)
-  }
-
-  // Extract seasons data
+  // ===== Extract seasons data =====
   const seasonsRe = /\|\s*S(\d+)\s*\|\s*(.+?)\s*\|\s*(\d+)集?\s*\|\s*(.+?)\s*\|\s*([\d.]+)[/／]10.*?\|\s*([\d.]+)[/／]10/gm
   const seasons = []
   let sm
