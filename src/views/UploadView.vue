@@ -101,7 +101,15 @@ function parseMdReport(md) {
   }
 
   // ===== Detect type =====
-  if (md.includes('制作团队') || md.includes('播出平台') || md.includes('各季详情') || md.includes('🎬')) {
+  // Novel reports have: 作者档案, 影视化改编潜力, 优书网, 起点
+  // Anime reports have: 制作团队, 播出平台, 各季详情, Bangumi, 追番
+  // Key: check novel-specific markers FIRST, since novel reports also contain 🎬 emoji in "影视化改编" section
+  const novelMarkers = ['作者档案', '优书网', '影视化改编潜力', '改编适配性评分', '起点中文网']
+  const animeMarkers = ['制作团队', '播出平台', '各季详情', 'Bangumi', '追番人数', '画风与制作']
+  const novelScore = novelMarkers.filter(m => md.includes(m)).length
+  const animeScore = animeMarkers.filter(m => md.includes(m)).length
+
+  if (animeScore > novelScore) {
     result.type = 'anime'
   } else {
     result.type = 'novel'
