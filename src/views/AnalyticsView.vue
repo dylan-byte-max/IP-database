@@ -7,7 +7,7 @@ import * as echarts from 'echarts'
 const router = useRouter()
 const ipList = ref([])
 const loading = ref(true)
-const activeView = ref('studio') // studio | platform | genre | overview
+const activeSection = ref('overview') // overview | novel | anime
 
 onMounted(async () => {
   const { data } = await supabase.from('ips').select('*').order('created_at', { ascending: false })
@@ -17,86 +17,54 @@ onMounted(async () => {
   renderCharts()
 })
 
-watch(activeView, async () => {
+watch(activeSection, async () => {
   await nextTick()
   renderCharts()
 })
 
-// ===== Studio Analysis =====
-const studioData = computed(() => {
-  const map = {}
-  ipList.value.filter(ip => ip.type === 'anime' && ip.studio).forEach(ip => {
-    if (!map[ip.studio]) map[ip.studio] = { name: ip.studio, projects: [], totalScore: 0, scoreCount: 0, genres: {} }
-    map[ip.studio].projects.push(ip)
-    if (ip.douban_score) { map[ip.studio].totalScore += ip.douban_score; map[ip.studio].scoreCount++ }
-    ip.genre_tags?.forEach(g => { map[ip.studio].genres[g] = (map[ip.studio].genres[g] || 0) + 1 })
-  })
-  return Object.values(map).map(s => ({
-    ...s,
-    avgScore: s.scoreCount ? (s.totalScore / s.scoreCount).toFixed(1) : null,
-    topGenres: Object.entries(s.genres).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]),
-  })).sort((a, b) => b.projects.length - a.projects.length)
-})
+// ===== Filtered lists =====
+const novels = computed(() => ipList.value.filter(i => i.type === 'novel'))
+const animes = computed(() => ipList.value.filter(i => i.type === 'anime'))
 
-// ===== Platform Analysis (split novel / anime) =====
-function buildPlatformMap(items, getPlats) {
+// ===== Generic helpers =====
+function buildGroupMap(items, getKey, extra) {
   const map = {}
   items.forEach(ip => {
-    const plats = getPlats(ip)
-    plats.forEach(p => {
-      if (!map[p]) map[p] = { name: p, projects: [], totalScore: 0, scoreCount: 0 }
-      map[p].projects.push(ip)
-      if (ip.douban_score) { map[p].totalScore += ip.douban_score; map[p].scoreCount++ }
-    })
-  })
-  return Object.values(map).map(p => ({
-    ...p,
-    avgScore: p.scoreCount ? (p.totalScore / p.scoreCount).toFixed(1) : null,
-  })).sort((a, b) => b.projects.length - a.projects.length)
-}
-
-const novelPlatformData = computed(() =>
-  buildPlatformMap(
-    ipList.value.filter(ip => ip.type === 'novel'),
-    ip => ip.platform ? [ip.platform] : []
-  )
-)
-
-const animePlatformData = computed(() =>
-  buildPlatformMap(
-    ipList.value.filter(ip => ip.type === 'anime'),
-    ip => ip.broadcast_platforms || []
-  )
-)
-
-// ===== Genre Analysis =====
-const genreData = computed(() => {
-  const map = {}
-  ipList.value.forEach(ip => {
-    ip.genre_tags?.forEach(g => {
-      if (!map[g]) map[g] = { name: g, count: 0, totalScore: 0, scoreCount: 0 }
-      map[g].count++
-      if (ip.douban_score) { map[g].totalScore += ip.douban_score; map[g].scoreCount++ }
+    const keys = getKey(ip)
+    ;(Array.isArray(keys) ? keys : [keys]).filter(Boolean).forEach(k => {
+      if (!map[k]) map[k] = { name: k, projects: [], totalScore: 0, scoreCount: 0, genres: {} }
+      map[k].projects.push(ip)
+      if (ip.douban_score) { map[k].totalScore += ip.douban_score; map[k].scoreCount++ }
+      ip.genre_tags?.forEach(g => { map[k].genres[g] = (map[k].genres[g] || 0) + 1 })
     })
   })
   return Object.values(map).map(g => ({
     ...g,
     avgScore: g.scoreCount ? (g.totalScore / g.scoreCount).toFixed(1) : null,
-  })).sort((a, b) => b.count - a.count)
-})
+    topGenres: Object.entries(g.genres).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0]),
+  })).sort((a, b) => b.projects.length - a.projects.length)
+}
 
-// ===== Overview Stats =====
+// ===== Novel Analytics =====
+const novelPlatforms = computed(() => buildGroupMap(novels.value, ip => ip.platform))
+const novelGenres = computed(() => buildGroupMap(novels.value, ip => ip.genre_tags || []))
+const novelTopRated = computed(() => [...novels.value].filter(i => i.douban_score).sort((a, b) => b.douban_score - a.douban_score).slice(0, 10))
+
+// ===== Anime Analytics =====
+const animeStudios = computed(() => buildGroupMap(animes.value, ip => ip.studio))
+const animePlatforms = computed(() => buildGroupMap(animes.value, ip => ip.broadcast_platforms || []))
+const animeGenres = computed(() => buildGroupMap(animes.value, ip => ip.genre_tags || []))
+const animeTopRated = computed(() => [...animes.value].filter(i => i.douban_score).sort((a, b) => b.douban_score - a.douban_score).slice(0, 10))
+
+// ===== Overview =====
 const overview = computed(() => {
-  const animes = ipList.value.filter(i => i.type === 'anime')
-  const novels = ipList.value.filter(i => i.type === 'novel')
   const scores = ipList.value.filter(i => i.douban_score).map(i => i.douban_score)
   return {
     total: ipList.value.length,
-    animes: animes.length,
-    novels: novels.length,
+    novels: novels.value.length,
+    animes: animes.value.length,
     avgScore: scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '-',
     topRated: [...ipList.value].filter(i => i.douban_score).sort((a, b) => b.douban_score - a.douban_score).slice(0, 5),
-    tierDist: { S: 0, A: 0, B: 0, C: 0 },
   }
 })
 
@@ -106,43 +74,45 @@ let chartInstances = []
 function renderCharts() {
   chartInstances.forEach(c => c.dispose())
   chartInstances = []
-
   if (ipList.value.length === 0) return
 
-  if (activeView.value === 'overview' || activeView.value === 'genre') {
-    renderGenrePie()
+  if (activeSection.value === 'overview') {
+    renderPie('overview-genre-pie', ipList.value)
+    renderScoreDist('overview-score-dist', ipList.value)
   }
-  if (activeView.value === 'overview' || activeView.value === 'studio') {
+  if (activeSection.value === 'novel') {
+    renderPie('novel-genre-pie', novels.value)
+    renderScoreDist('novel-score-dist', novels.value)
+  }
+  if (activeSection.value === 'anime') {
+    renderPie('anime-genre-pie', animes.value)
     renderStudioBar()
-  }
-  if (activeView.value === 'overview') {
-    renderScoreDistribution()
+    renderScoreDist('anime-score-dist', animes.value)
   }
 }
 
-function renderGenrePie() {
-  const el = document.getElementById('genre-pie')
+function renderPie(elId, items) {
+  const el = document.getElementById(elId)
   if (!el) return
   const chart = echarts.init(el, 'dark')
   chartInstances.push(chart)
+  const map = {}
+  items.forEach(ip => ip.genre_tags?.forEach(g => { map[g] = (map[g] || 0) + 1 }))
+  const data = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, value]) => ({ name, value }))
   chart.setOption({
     backgroundColor: 'transparent',
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    series: [{
-      type: 'pie', radius: ['40%', '70%'], center: ['50%', '50%'],
-      itemStyle: { borderRadius: 6, borderColor: '#0d0d1a', borderWidth: 2 },
-      label: { color: '#ccc', fontSize: 12 },
-      data: genreData.value.slice(0, 10).map(g => ({ name: g.name, value: g.count })),
-    }]
+    series: [{ type: 'pie', radius: ['40%', '70%'], itemStyle: { borderRadius: 6, borderColor: '#0d0d1a', borderWidth: 2 }, label: { color: '#ccc', fontSize: 12 }, data }]
   })
 }
 
 function renderStudioBar() {
-  const el = document.getElementById('studio-bar')
+  const el = document.getElementById('anime-studio-bar')
   if (!el) return
   const chart = echarts.init(el, 'dark')
   chartInstances.push(chart)
-  const top = studioData.value.slice(0, 8)
+  const top = animeStudios.value.slice(0, 8)
+  if (!top.length) return
   chart.setOption({
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' },
@@ -152,42 +122,29 @@ function renderStudioBar() {
       { type: 'value', name: '均分', min: 5, max: 10, axisLabel: { color: '#999' }, splitLine: { show: false } },
     ],
     series: [
-      { name: '作品数', type: 'bar', data: top.map(s => s.projects.length), itemStyle: { color: '#7c3aed', borderRadius: [4, 4, 0, 0] } },
+      { name: '作品数', type: 'bar', data: top.map(s => s.projects.length), itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] } },
       { name: '平均评分', type: 'line', yAxisIndex: 1, data: top.map(s => s.avgScore || 0), itemStyle: { color: '#fbbf24' }, lineStyle: { width: 2 } },
     ]
   })
 }
 
-function renderScoreDistribution() {
-  const el = document.getElementById('score-dist')
+function renderScoreDist(elId, items) {
+  const el = document.getElementById(elId)
   if (!el) return
   const chart = echarts.init(el, 'dark')
   chartInstances.push(chart)
   const bins = { '<6': 0, '6-6.9': 0, '7-7.4': 0, '7.5-7.9': 0, '8-8.4': 0, '8.5-8.9': 0, '9+': 0 }
-  ipList.value.filter(i => i.douban_score).forEach(i => {
+  items.filter(i => i.douban_score).forEach(i => {
     const s = i.douban_score
-    if (s < 6) bins['<6']++
-    else if (s < 7) bins['6-6.9']++
-    else if (s < 7.5) bins['7-7.4']++
-    else if (s < 8) bins['7.5-7.9']++
-    else if (s < 8.5) bins['8-8.4']++
-    else if (s < 9) bins['8.5-8.9']++
-    else bins['9+']++
+    if (s < 6) bins['<6']++; else if (s < 7) bins['6-6.9']++; else if (s < 7.5) bins['7-7.4']++
+    else if (s < 8) bins['7.5-7.9']++; else if (s < 8.5) bins['8-8.4']++; else if (s < 9) bins['8.5-8.9']++; else bins['9+']++
   })
+  const color = elId.includes('novel') ? ['#a78bfa', '#6d28d9'] : elId.includes('anime') ? ['#60a5fa', '#1d4ed8'] : ['#a78bfa', '#6d28d9']
   chart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
+    backgroundColor: 'transparent', tooltip: { trigger: 'axis' },
     xAxis: { type: 'category', data: Object.keys(bins), axisLabel: { color: '#999' } },
     yAxis: { type: 'value', axisLabel: { color: '#999' }, splitLine: { lineStyle: { color: '#222' } } },
-    series: [{
-      type: 'bar', data: Object.values(bins),
-      itemStyle: {
-        borderRadius: [4, 4, 0, 0],
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: '#a78bfa' }, { offset: 1, color: '#6d28d9' }
-        ])
-      }
-    }]
+    series: [{ type: 'bar', data: Object.values(bins), itemStyle: { borderRadius: [4, 4, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: color[0] }, { offset: 1, color: color[1] }]) } }]
   })
 }
 
@@ -207,43 +164,43 @@ function getScoreColor(score) {
     <h1 class="text-2xl font-bold text-white mb-2">📊 数据透视</h1>
     <p class="text-gray-400 text-sm mb-6">多维度分析你收集的 IP 数据</p>
 
-    <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-20">
       <div class="w-8 h-8 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
     </div>
 
-    <!-- Empty -->
     <div v-else-if="ipList.length === 0" class="text-center py-20">
       <div class="text-5xl mb-4">📊</div>
       <p class="text-gray-400">需要至少录入一些 IP 数据后才能进行分析</p>
     </div>
 
     <template v-else>
-      <!-- View Tabs -->
+      <!-- Top-level Section Tabs -->
       <div class="flex bg-[#1a1a3a] rounded-lg p-0.5 mb-6 w-fit">
-        <button v-for="tab in [{key:'overview',label:'📈 总览'},{key:'studio',label:'🏭 制作公司'},{key:'platform',label:'📺 平台'},{key:'genre',label:'🏷️ 题材'}]"
-          :key="tab.key" @click="activeView = tab.key"
-          class="px-3 py-1.5 rounded-md text-sm font-medium transition-all"
-          :class="activeView === tab.key ? 'bg-purple-500/30 text-purple-200' : 'text-gray-400 hover:text-white'">
+        <button v-for="tab in [
+          {key:'overview', label:'📈 总览'},
+          {key:'novel', label:`📖 小说 (${novels.length})`},
+          {key:'anime', label:`🎬 动漫 (${animes.length})`}
+        ]" :key="tab.key" @click="activeSection = tab.key"
+          class="px-4 py-2 rounded-md text-sm font-medium transition-all"
+          :class="activeSection === tab.key ? 'bg-purple-500/30 text-purple-200' : 'text-gray-400 hover:text-white'">
           {{ tab.label }}
         </button>
       </div>
 
-      <!-- Overview -->
-      <div v-if="activeView === 'overview'" class="space-y-6">
-        <!-- Stat cards -->
+      <!-- ==================== OVERVIEW ==================== -->
+      <div v-if="activeSection === 'overview'" class="space-y-6">
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4 text-center">
             <div class="text-3xl font-bold text-white">{{ overview.total }}</div>
             <div class="text-sm text-gray-400 mt-1">总 IP 数</div>
           </div>
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4 text-center">
-            <div class="text-3xl font-bold text-blue-300">{{ overview.animes }}</div>
-            <div class="text-sm text-gray-400 mt-1">动漫</div>
+            <div class="text-3xl font-bold text-purple-300">{{ overview.novels }}</div>
+            <div class="text-sm text-gray-400 mt-1">📖 小说</div>
           </div>
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4 text-center">
-            <div class="text-3xl font-bold text-purple-300">{{ overview.novels }}</div>
-            <div class="text-sm text-gray-400 mt-1">小说</div>
+            <div class="text-3xl font-bold text-blue-300">{{ overview.animes }}</div>
+            <div class="text-sm text-gray-400 mt-1">🎬 动漫</div>
           </div>
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4 text-center">
             <div class="text-3xl font-bold text-yellow-300">{{ overview.avgScore }}</div>
@@ -251,169 +208,218 @@ function getScoreColor(score) {
           </div>
         </div>
 
-        <!-- Charts row -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-            <h3 class="text-sm font-medium text-gray-400 mb-2">题材分布</h3>
-            <div id="genre-pie" style="height: 300px"></div>
+            <h3 class="text-sm font-medium text-gray-400 mb-2">全部题材分布</h3>
+            <div id="overview-genre-pie" style="height: 300px"></div>
           </div>
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-            <h3 class="text-sm font-medium text-gray-400 mb-2">评分分布（豆瓣）</h3>
-            <div id="score-dist" style="height: 300px"></div>
+            <h3 class="text-sm font-medium text-gray-400 mb-2">全部评分分布（豆瓣）</h3>
+            <div id="overview-score-dist" style="height: 300px"></div>
           </div>
         </div>
 
-        <!-- Top rated -->
         <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
           <h3 class="text-sm font-medium text-gray-400 mb-3">🏆 评分 Top 5</h3>
           <div class="space-y-2">
-            <div v-for="(ip, i) in overview.topRated" :key="ip.id"
-              @click="goDetail(ip.id)"
+            <div v-for="(ip, i) in overview.topRated" :key="ip.id" @click="goDetail(ip.id)"
               class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
-              <span class="text-lg font-bold w-6 text-center" :class="i === 0 ? 'text-yellow-400' : i === 1 ? 'text-gray-300' : i === 2 ? 'text-orange-400' : 'text-gray-500'">
-                {{ i + 1 }}
-              </span>
-              <span class="text-xs px-1.5 py-0.5 rounded"
-                :class="ip.type === 'novel' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'">
-                {{ ip.type === 'novel' ? '📖' : '🎬' }}
-              </span>
+              <span class="text-lg font-bold w-6 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded" :class="ip.type==='novel'?'bg-purple-500/20 text-purple-300':'bg-blue-500/20 text-blue-300'">{{ ip.type==='novel'?'📖':'🎬' }}</span>
               <span class="flex-1 text-sm text-white truncate">{{ ip.name }}</span>
               <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>
             </div>
           </div>
         </div>
-
-        <!-- Studio bar -->
-        <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-          <h3 class="text-sm font-medium text-gray-400 mb-2">制作公司 × 作品数 × 评分</h3>
-          <div id="studio-bar" style="height: 300px"></div>
-        </div>
       </div>
 
-      <!-- Studio View -->
-      <div v-if="activeView === 'studio'" class="space-y-4">
-        <div v-if="studioData.length === 0" class="text-center py-10 text-gray-500">暂无制作公司数据</div>
-        <div v-for="studio in studioData" :key="studio.name"
-          class="bg-[#14142a] border border-white/5 rounded-xl p-5">
-          <div class="flex items-start justify-between mb-3">
-            <div>
-              <h3 class="text-lg font-bold text-white">🏭 {{ studio.name }}</h3>
-              <div class="flex items-center gap-3 mt-1 text-sm text-gray-400">
-                <span>{{ studio.projects.length }} 部作品</span>
-                <span v-if="studio.avgScore">·  均分 <span :class="getScoreColor(parseFloat(studio.avgScore))">{{ studio.avgScore }}</span></span>
-              </div>
-            </div>
-            <div v-if="studio.topGenres.length" class="flex gap-1">
-              <span v-for="g in studio.topGenres" :key="g"
-                class="text-[11px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300">{{ g }}</span>
-            </div>
-          </div>
-          <div class="space-y-1.5">
-            <div v-for="ip in studio.projects" :key="ip.id"
-              @click="goDetail(ip.id)"
-              class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
-              <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-              <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
-                :class="ip.production_tier.includes('S') ? 'bg-yellow-500/15 text-yellow-300' : ip.production_tier.includes('A') ? 'bg-green-500/15 text-green-300' : 'bg-gray-500/15 text-gray-400'">
-                {{ ip.production_tier }}
-              </span>
-              <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
-            </div>
-          </div>
-        </div>
+      <!-- ==================== NOVEL ANALYTICS ==================== -->
+      <div v-if="activeSection === 'novel'" class="space-y-6">
+        <div v-if="novels.length === 0" class="text-center py-10 text-gray-500">暂无小说数据</div>
+        <template v-else>
 
-        <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-          <h3 class="text-sm font-medium text-gray-400 mb-2">制作公司对比</h3>
-          <div id="studio-bar" style="height: 300px"></div>
-        </div>
-      </div>
-
-      <!-- Platform View -->
-      <div v-if="activeView === 'platform'" class="space-y-6">
-        <div v-if="novelPlatformData.length === 0 && animePlatformData.length === 0" class="text-center py-10 text-gray-500">暂无平台数据</div>
-
-        <!-- Novel Platforms -->
-        <div v-if="novelPlatformData.length > 0">
-          <h2 class="text-lg font-bold text-purple-300 mb-3 flex items-center gap-2">
-            <span>📖</span> 小说连载平台
-          </h2>
-          <div class="space-y-3">
-            <div v-for="plat in novelPlatformData" :key="'novel-'+plat.name"
-              class="bg-[#14142a] border border-white/5 rounded-xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <h3 class="text-lg font-bold text-white">📚 {{ plat.name }}</h3>
-                  <span class="text-sm text-gray-400">{{ plat.projects.length }} 部作品
+          <!-- Novel: Platform -->
+          <div>
+            <h2 class="text-base font-bold text-purple-300 mb-3">📚 连载平台</h2>
+            <div class="space-y-3">
+              <div v-for="plat in novelPlatforms" :key="plat.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="font-bold text-white">{{ plat.name }}</h3>
+                  <span class="text-sm text-gray-400">{{ plat.projects.length }} 部
                     <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
                   </span>
                 </div>
-              </div>
-              <div class="space-y-1.5">
-                <div v-for="ip in plat.projects" :key="ip.id"
-                  @click="goDetail(ip.id)"
-                  class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
-                  <span class="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">📖</span>
-                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-                  <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
+                <div class="space-y-1">
+                  <div v-for="ip in plat.projects" :key="ip.id" @click="goDetail(ip.id)"
+                    class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                    <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                    <span v-if="ip.author" class="text-gray-500 text-xs">{{ ip.author }}</span>
+                    <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Anime Platforms -->
-        <div v-if="animePlatformData.length > 0">
-          <h2 class="text-lg font-bold text-blue-300 mb-3 flex items-center gap-2">
-            <span>🎬</span> 动漫播出平台
-          </h2>
-          <div class="space-y-3">
-            <div v-for="plat in animePlatformData" :key="'anime-'+plat.name"
-              class="bg-[#14142a] border border-white/5 rounded-xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <h3 class="text-lg font-bold text-white">📺 {{ plat.name }}</h3>
-                  <span class="text-sm text-gray-400">{{ plat.projects.length }} 部作品
+          <!-- Novel: Genre + Score Charts -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">小说题材分布</h3>
+              <div id="novel-genre-pie" style="height: 280px"></div>
+            </div>
+            <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">小说评分分布（豆瓣）</h3>
+              <div id="novel-score-dist" style="height: 280px"></div>
+            </div>
+          </div>
+
+          <!-- Novel: Genre Cards -->
+          <div>
+            <h2 class="text-base font-bold text-purple-300 mb-3">🏷️ 题材标签</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div v-for="genre in novelGenres" :key="genre.name" class="bg-[#14142a] border border-white/5 rounded-xl p-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-white text-sm">{{ genre.name }}</span>
+                  <span class="text-xs text-gray-400">{{ genre.count }} 部</span>
+                </div>
+                <div v-if="genre.avgScore" class="text-xs mt-1">
+                  均分 <span :class="getScoreColor(parseFloat(genre.avgScore))" class="font-medium">{{ genre.avgScore }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Novel: Top Rated -->
+          <div v-if="novelTopRated.length" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+            <h3 class="text-sm font-medium text-gray-400 mb-3">🏆 小说评分排行</h3>
+            <div class="space-y-2">
+              <div v-for="(ip, i) in novelTopRated" :key="ip.id" @click="goDetail(ip.id)"
+                class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                <span class="font-bold w-5 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
+                <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                <span v-if="ip.author" class="text-gray-500 text-xs">{{ ip.author }}</span>
+                <span v-if="ip.adaptation_score" class="text-xs text-gray-400">改编 {{ ip.adaptation_score }}/5</span>
+                <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ==================== ANIME ANALYTICS ==================== -->
+      <div v-if="activeSection === 'anime'" class="space-y-6">
+        <div v-if="animes.length === 0" class="text-center py-10 text-gray-500">暂无动漫数据</div>
+        <template v-else>
+
+          <!-- Anime: Studio -->
+          <div>
+            <h2 class="text-base font-bold text-blue-300 mb-3">🏭 制作公司</h2>
+            <div class="space-y-3">
+              <div v-for="studio in animeStudios" :key="studio.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+                <div class="flex items-start justify-between mb-2">
+                  <div>
+                    <h3 class="font-bold text-white">{{ studio.name }}</h3>
+                    <span class="text-sm text-gray-400">{{ studio.projects.length }} 部作品
+                      <span v-if="studio.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(studio.avgScore))">{{ studio.avgScore }}</span></span>
+                    </span>
+                  </div>
+                  <div v-if="studio.topGenres.length" class="flex gap-1">
+                    <span v-for="g in studio.topGenres" :key="g" class="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300">{{ g }}</span>
+                  </div>
+                </div>
+                <div class="space-y-1">
+                  <div v-for="ip in studio.projects" :key="ip.id" @click="goDetail(ip.id)"
+                    class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                    <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                    <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
+                      :class="ip.production_tier.includes('S')?'bg-yellow-500/15 text-yellow-300':ip.production_tier.includes('A')?'bg-green-500/15 text-green-300':'bg-gray-500/15 text-gray-400'">
+                      {{ ip.production_tier }}
+                    </span>
+                    <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Anime: Studio Chart -->
+          <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+            <h3 class="text-sm font-medium text-gray-400 mb-2">制作公司 × 作品数 × 评分</h3>
+            <div id="anime-studio-bar" style="height: 300px"></div>
+          </div>
+
+          <!-- Anime: Broadcast Platform -->
+          <div>
+            <h2 class="text-base font-bold text-blue-300 mb-3">📺 播出平台</h2>
+            <div class="space-y-3">
+              <div v-for="plat in animePlatforms" :key="plat.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="font-bold text-white">{{ plat.name }}</h3>
+                  <span class="text-sm text-gray-400">{{ plat.projects.length }} 部
                     <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
                   </span>
                 </div>
-              </div>
-              <div class="space-y-1.5">
-                <div v-for="ip in plat.projects" :key="ip.id"
-                  @click="goDetail(ip.id)"
-                  class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
-                  <span class="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">🎬</span>
-                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-                  <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
-                    :class="ip.production_tier.includes('S') ? 'bg-yellow-500/15 text-yellow-300' : ip.production_tier.includes('A') ? 'bg-green-500/15 text-green-300' : 'bg-gray-500/15 text-gray-400'">
-                    {{ ip.production_tier }}
-                  </span>
-                  <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
+                <div class="space-y-1">
+                  <div v-for="ip in plat.projects" :key="ip.id" @click="goDetail(ip.id)"
+                    class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                    <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                    <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
+                      :class="ip.production_tier.includes('S')?'bg-yellow-500/15 text-yellow-300':ip.production_tier.includes('A')?'bg-green-500/15 text-green-300':'bg-gray-500/15 text-gray-400'">
+                      {{ ip.production_tier }}
+                    </span>
+                    <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- Genre View -->
-      <div v-if="activeView === 'genre'" class="space-y-4">
-        <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-          <h3 class="text-sm font-medium text-gray-400 mb-2">题材分布</h3>
-          <div id="genre-pie" style="height: 300px"></div>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div v-for="genre in genreData" :key="genre.name"
-            class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-            <div class="flex items-center justify-between">
-              <h4 class="font-medium text-white">{{ genre.name }}</h4>
-              <span class="text-sm text-gray-400">{{ genre.count }} 部</span>
+          <!-- Anime: Genre + Score Charts -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">动漫题材分布</h3>
+              <div id="anime-genre-pie" style="height: 280px"></div>
             </div>
-            <div v-if="genre.avgScore" class="text-sm mt-1">
-              <span class="text-gray-500">均分 </span>
-              <span :class="getScoreColor(parseFloat(genre.avgScore))" class="font-medium">{{ genre.avgScore }}</span>
+            <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">动漫评分分布（豆瓣）</h3>
+              <div id="anime-score-dist" style="height: 280px"></div>
             </div>
           </div>
-        </div>
+
+          <!-- Anime: Genre Cards -->
+          <div>
+            <h2 class="text-base font-bold text-blue-300 mb-3">🏷️ 题材标签</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div v-for="genre in animeGenres" :key="genre.name" class="bg-[#14142a] border border-white/5 rounded-xl p-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-white text-sm">{{ genre.name }}</span>
+                  <span class="text-xs text-gray-400">{{ genre.count }} 部</span>
+                </div>
+                <div v-if="genre.avgScore" class="text-xs mt-1">
+                  均分 <span :class="getScoreColor(parseFloat(genre.avgScore))" class="font-medium">{{ genre.avgScore }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Anime: Top Rated -->
+          <div v-if="animeTopRated.length" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+            <h3 class="text-sm font-medium text-gray-400 mb-3">🏆 动漫评分排行</h3>
+            <div class="space-y-2">
+              <div v-for="(ip, i) in animeTopRated" :key="ip.id" @click="goDetail(ip.id)"
+                class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                <span class="font-bold w-5 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
+                <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                <span v-if="ip.studio" class="text-gray-500 text-xs">{{ ip.studio }}</span>
+                <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
+                  :class="ip.production_tier.includes('S')?'bg-yellow-500/15 text-yellow-300':ip.production_tier.includes('A')?'bg-green-500/15 text-green-300':'bg-gray-500/15 text-gray-400'">
+                  {{ ip.production_tier }}
+                </span>
+                <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
     </template>
   </div>
