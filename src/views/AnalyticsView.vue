@@ -299,7 +299,10 @@ function getScoreColor(score) {
               @click="goDetail(ip.id)"
               class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
               <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-              <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-400 font-bold">{{ ip.production_tier }}</span>
+              <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
+                :class="ip.production_tier.includes('S') ? 'bg-yellow-500/15 text-yellow-300' : ip.production_tier.includes('A') ? 'bg-green-500/15 text-green-300' : 'bg-gray-500/15 text-gray-400'">
+                {{ ip.production_tier }}
+              </span>
               <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
             </div>
           </div>

@@ -131,7 +131,9 @@ function getScoreColor(score) {
               </div>
               <div v-if="ip.production_tier" class="flex justify-between">
                 <span class="text-gray-500">制作水准</span>
-                <span class="font-bold text-yellow-400">{{ ip.production_tier }}级</span>
+                <span class="font-bold" :class="ip.production_tier.includes('S') ? 'text-yellow-300' : ip.production_tier.includes('A') ? 'text-green-300' : 'text-gray-400'">
+                  {{ ip.production_tier }}级
+                </span>
               </div>
               <div v-if="ip.total_seasons" class="flex justify-between">
                 <span class="text-gray-500">季数</span>
