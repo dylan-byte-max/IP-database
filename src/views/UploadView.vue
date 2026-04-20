@@ -374,9 +374,14 @@ function resetForm() {
             <input v-model.number="form.douban_score" type="number" step="0.1" min="0" max="10"
               class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/50" />
           </div>
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">{{ form.type === 'anime' ? 'Bangumi' : '优书网' }}</label>
-            <input v-model.number="form.type === 'anime' ? form.bangumi_score : form.yousuu_score" type="number" step="0.1" min="0" max="10"
+          <div v-if="form.type === 'anime'">
+            <label class="block text-sm text-gray-400 mb-1">Bangumi</label>
+            <input v-model.number="form.bangumi_score" type="number" step="0.1" min="0" max="10"
+              class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/50" />
+          </div>
+          <div v-else>
+            <label class="block text-sm text-gray-400 mb-1">优书网</label>
+            <input v-model.number="form.yousuu_score" type="number" step="0.1" min="0" max="10"
               class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/50" />
           </div>
           <div v-if="form.type === 'novel'">
