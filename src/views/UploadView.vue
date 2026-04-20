@@ -101,18 +101,24 @@ function parseMdReport(md) {
   }
 
   // ===== Detect type =====
-  // Novel reports have: 作者档案, 影视化改编潜力, 优书网, 起点
-  // Anime reports have: 制作团队, 播出平台, 各季详情, Bangumi, 追番
-  // Key: check novel-specific markers FIRST, since novel reports also contain 🎬 emoji in "影视化改编" section
-  const novelMarkers = ['作者档案', '优书网', '影视化改编潜力', '改编适配性评分', '起点中文网']
-  const animeMarkers = ['制作团队', '播出平台', '各季详情', 'Bangumi', '追番人数', '画风与制作']
-  const novelScore = novelMarkers.filter(m => md.includes(m)).length
-  const animeScore = animeMarkers.filter(m => md.includes(m)).length
-
-  if (animeScore > novelScore) {
-    result.type = 'anime'
-  } else {
+  // Priority 1: HTML comment metadata (<!-- type: novel --> or <!-- type: anime -->)
+  const metaType = md.match(/<!--\s*type:\s*(novel|anime)\s*-->/i)
+  if (metaType) {
+    result.type = metaType[1].toLowerCase()
+  }
+  // Priority 2: Title keywords ("小说深度研究" vs "动漫深度研究")
+  else if (md.match(/小说深度研究|小说研究报告/)) {
     result.type = 'novel'
+  } else if (md.match(/动漫深度研究|动漫研究报告/)) {
+    result.type = 'anime'
+  }
+  // Priority 3: Feature scoring - count markers for each type
+  else {
+    const novelMarkers = ['作者档案', '优书网', '影视化改编潜力', '改编适配性评分', '起点中文网', '番茄小说', '总字数']
+    const animeMarkers = ['制作团队', '播出平台', '各季详情', 'Bangumi', '追番人数', '画风与制作', '制作水准']
+    const novelHits = novelMarkers.filter(m => md.includes(m)).length
+    const animeHits = animeMarkers.filter(m => md.includes(m)).length
+    result.type = animeHits > novelHits ? 'anime' : 'novel'
   }
 
   // ===== Extract name from title =====
