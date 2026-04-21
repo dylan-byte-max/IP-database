@@ -51,7 +51,12 @@ const novelGenres = computed(() => buildGroupMap(novels.value, ip => ip.genre_ta
 const novelTopRated = computed(() => [...novels.value].filter(i => i.douban_score).sort((a, b) => b.douban_score - a.douban_score).slice(0, 10))
 
 // ===== Anime Analytics =====
-const animeStudios = computed(() => buildGroupMap(animes.value, ip => ip.studio))
+const animeStudios = computed(() => buildGroupMap(animes.value, ip => {
+  if (!ip.studio) return []
+  // Split compound studio names: "万维猫动画 × 原力动画" → ["万维猫动画", "原力动画"]
+  // Also handle "幻维数码/大呈印象" format
+  return ip.studio.split(/[×x/／、,，]+/).map(s => s.trim()).filter(Boolean)
+}))
 const animePlatforms = computed(() => buildGroupMap(animes.value, ip => ip.broadcast_platforms || []))
 const animeGenres = computed(() => buildGroupMap(animes.value, ip => ip.genre_tags || []))
 const animeTopRated = computed(() => [...animes.value].filter(i => i.douban_score).sort((a, b) => b.douban_score - a.douban_score).slice(0, 10))
