@@ -150,6 +150,15 @@ function renderScoreDist(elId, items) {
 
 function goDetail(id) { router.push(`/ip/${id}`) }
 
+function tierClass(tier) {
+  if (!tier) return 'bg-gray-500/15 text-gray-400'
+  if (tier.includes('S+')) return 'bg-red-500/15 text-red-300'
+  if (tier.includes('S')) return 'bg-yellow-500/15 text-yellow-300'
+  if (tier.includes('A')) return 'bg-green-500/15 text-green-300'
+  if (tier.includes('B')) return 'bg-blue-500/15 text-blue-300'
+  return 'bg-gray-500/15 text-gray-400'
+}
+
 function getScoreColor(score) {
   if (!score) return 'text-gray-500'
   if (score >= 9) return 'text-yellow-300'
@@ -331,8 +340,7 @@ function getScoreColor(score) {
                   <div v-for="ip in studio.projects" :key="ip.id" @click="goDetail(ip.id)"
                     class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
                     <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-                    <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
-                      :class="ip.production_tier.includes('S')?'bg-yellow-500/15 text-yellow-300':ip.production_tier.includes('A')?'bg-green-500/15 text-green-300':'bg-gray-500/15 text-gray-400'">
+                    <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold" :class="tierClass(ip.production_tier)">
                       {{ ip.production_tier }}
                     </span>
                     <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
@@ -363,8 +371,7 @@ function getScoreColor(score) {
                   <div v-for="ip in plat.projects" :key="ip.id" @click="goDetail(ip.id)"
                     class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
                     <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-                    <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
-                      :class="ip.production_tier.includes('S')?'bg-yellow-500/15 text-yellow-300':ip.production_tier.includes('A')?'bg-green-500/15 text-green-300':'bg-gray-500/15 text-gray-400'">
+                    <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold" :class="tierClass(ip.production_tier)">
                       {{ ip.production_tier }}
                     </span>
                     <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
@@ -411,8 +418,7 @@ function getScoreColor(score) {
                 <span class="font-bold w-5 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
                 <span class="text-white flex-1 truncate">{{ ip.name }}</span>
                 <span v-if="ip.studio" class="text-gray-500 text-xs">{{ ip.studio }}</span>
-                <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold"
-                  :class="ip.production_tier.includes('S')?'bg-yellow-500/15 text-yellow-300':ip.production_tier.includes('A')?'bg-green-500/15 text-green-300':'bg-gray-500/15 text-gray-400'">
+                <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold" :class="tierClass(ip.production_tier)">
                   {{ ip.production_tier }}
                 </span>
                 <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>

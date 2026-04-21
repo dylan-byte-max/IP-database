@@ -179,8 +179,12 @@ function getScoreBadgeClass(score) {
                 {{ ip.type === 'novel' ? '📖 小说' : '🎬 动漫' }}
               </span>
               <span v-if="ip.production_tier" class="text-xs px-1.5 py-0.5 rounded font-bold"
-                :class="ip.production_tier.includes('S') ? 'bg-yellow-500/15 text-yellow-300' : ip.production_tier.includes('A') ? 'bg-green-500/15 text-green-300' : 'bg-gray-500/15 text-gray-400'">
-                {{ ip.production_tier }}级
+                :class="ip.production_tier.includes('S+') ? 'bg-red-500/15 text-red-300'
+                  : ip.production_tier.includes('S') ? 'bg-yellow-500/15 text-yellow-300'
+                  : ip.production_tier.includes('A') ? 'bg-green-500/15 text-green-300'
+                  : ip.production_tier.includes('B') ? 'bg-blue-500/15 text-blue-300'
+                  : 'bg-gray-500/15 text-gray-400'">
+                {{ ip.production_tier }}
               </span>
             </div>
             <h3 class="font-bold text-white truncate group-hover:text-purple-200 transition-colors">
