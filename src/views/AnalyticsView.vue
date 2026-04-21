@@ -8,6 +8,8 @@ const router = useRouter()
 const ipList = ref([])
 const loading = ref(true)
 const activeSection = ref('overview') // overview | novel | anime
+const novelSubTab = ref('platform')   // platform | genre | ranking
+const animeSubTab = ref('studio')     // studio | platform | genre | ranking
 
 onMounted(async () => {
   const { data } = await supabase.from('ips').select('*').order('created_at', { ascending: false })
@@ -17,7 +19,7 @@ onMounted(async () => {
   renderCharts()
 })
 
-watch(activeSection, async () => {
+watch([activeSection, novelSubTab, animeSubTab], async () => {
   await nextTick()
   renderCharts()
 })
@@ -85,14 +87,14 @@ function renderCharts() {
     renderPie('overview-genre-pie', ipList.value)
     renderScoreDist('overview-score-dist', ipList.value)
   }
-  if (activeSection.value === 'novel') {
+  if (activeSection.value === 'novel' && novelSubTab.value === 'genre') {
     renderPie('novel-genre-pie', novels.value)
-    renderScoreDist('novel-score-dist', novels.value)
   }
-  if (activeSection.value === 'anime') {
-    renderPie('anime-genre-pie', animes.value)
+  if (activeSection.value === 'anime' && animeSubTab.value === 'studio') {
     renderStudioBar()
-    renderScoreDist('anime-score-dist', animes.value)
+  }
+  if (activeSection.value === 'anime' && animeSubTab.value === 'genre') {
+    renderPie('anime-genre-pie', animes.value)
   }
 }
 
@@ -248,48 +250,45 @@ function getScoreColor(score) {
       </div>
 
       <!-- ==================== NOVEL ANALYTICS ==================== -->
-      <div v-if="activeSection === 'novel'" class="space-y-6">
+      <div v-if="activeSection === 'novel'" class="space-y-5">
         <div v-if="novels.length === 0" class="text-center py-10 text-gray-500">暂无小说数据</div>
         <template v-else>
+          <!-- Novel Sub Tabs -->
+          <div class="flex bg-[#14142a] rounded-lg p-0.5 w-fit">
+            <button v-for="tab in [{key:'platform',label:'📚 连载平台'},{key:'genre',label:'🏷️ 题材'},{key:'ranking',label:'🏆 排行'}]"
+              :key="tab.key" @click="novelSubTab = tab.key"
+              class="px-3 py-1.5 rounded-md text-sm font-medium transition-all"
+              :class="novelSubTab === tab.key ? 'bg-purple-500/25 text-purple-200' : 'text-gray-400 hover:text-white'">
+              {{ tab.label }}
+            </button>
+          </div>
 
           <!-- Novel: Platform -->
-          <div>
-            <h2 class="text-base font-bold text-purple-300 mb-3">📚 连载平台</h2>
-            <div class="space-y-3">
-              <div v-for="plat in novelPlatforms" :key="plat.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-2">
-                  <h3 class="font-bold text-white">{{ plat.name }}</h3>
-                  <span class="text-sm text-gray-400">{{ plat.projects.length }} 部
-                    <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
-                  </span>
-                </div>
-                <div class="space-y-1">
-                  <div v-for="ip in plat.projects" :key="ip.id" @click="goDetail(ip.id)"
-                    class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
-                    <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-                    <span v-if="ip.author" class="text-gray-500 text-xs">{{ ip.author }}</span>
-                    <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
-                  </div>
+          <div v-if="novelSubTab === 'platform'" class="space-y-3">
+            <div v-for="plat in novelPlatforms" :key="plat.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-white">{{ plat.name }}</h3>
+                <span class="text-sm text-gray-400">{{ plat.projects.length }} 部
+                  <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
+                </span>
+              </div>
+              <div class="space-y-1">
+                <div v-for="ip in plat.projects" :key="ip.id" @click="goDetail(ip.id)"
+                  class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                  <span v-if="ip.author" class="text-gray-500 text-xs">{{ ip.author }}</span>
+                  <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Novel: Genre + Score Charts -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Novel: Genre -->
+          <div v-if="novelSubTab === 'genre'" class="space-y-4">
             <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-              <h3 class="text-sm font-medium text-gray-400 mb-2">小说题材分布</h3>
+              <h3 class="text-sm font-medium text-gray-400 mb-2">题材分布</h3>
               <div id="novel-genre-pie" style="height: 280px"></div>
             </div>
-            <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-              <h3 class="text-sm font-medium text-gray-400 mb-2">小说评分分布（豆瓣）</h3>
-              <div id="novel-score-dist" style="height: 280px"></div>
-            </div>
-          </div>
-
-          <!-- Novel: Genre Cards -->
-          <div>
-            <h2 class="text-base font-bold text-purple-300 mb-3">🏷️ 题材标签</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               <div v-for="genre in novelGenres" :key="genre.name" class="bg-[#14142a] border border-white/5 rounded-xl p-3">
                 <div class="flex items-center justify-between">
@@ -303,31 +302,42 @@ function getScoreColor(score) {
             </div>
           </div>
 
-          <!-- Novel: Top Rated -->
-          <div v-if="novelTopRated.length" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-            <h3 class="text-sm font-medium text-gray-400 mb-3">🏆 小说评分排行</h3>
-            <div class="space-y-2">
-              <div v-for="(ip, i) in novelTopRated" :key="ip.id" @click="goDetail(ip.id)"
-                class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
-                <span class="font-bold w-5 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
-                <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-                <span v-if="ip.author" class="text-gray-500 text-xs">{{ ip.author }}</span>
-                <span v-if="ip.adaptation_score" class="text-xs text-gray-400">改编 {{ ip.adaptation_score }}/5</span>
-                <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>
+          <!-- Novel: Ranking -->
+          <div v-if="novelSubTab === 'ranking'">
+            <div v-if="novelTopRated.length" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-3">豆瓣评分排行</h3>
+              <div class="space-y-2">
+                <div v-for="(ip, i) in novelTopRated" :key="ip.id" @click="goDetail(ip.id)"
+                  class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                  <span class="font-bold w-5 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
+                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                  <span v-if="ip.author" class="text-gray-500 text-xs">{{ ip.author }}</span>
+                  <span v-if="ip.adaptation_score" class="text-xs text-gray-400">改编 {{ ip.adaptation_score }}/5</span>
+                  <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>
+                </div>
               </div>
             </div>
+            <div v-else class="text-center py-10 text-gray-500">暂无评分数据</div>
           </div>
         </template>
       </div>
 
       <!-- ==================== ANIME ANALYTICS ==================== -->
-      <div v-if="activeSection === 'anime'" class="space-y-6">
+      <div v-if="activeSection === 'anime'" class="space-y-5">
         <div v-if="animes.length === 0" class="text-center py-10 text-gray-500">暂无动漫数据</div>
         <template v-else>
+          <!-- Anime Sub Tabs -->
+          <div class="flex bg-[#14142a] rounded-lg p-0.5 w-fit">
+            <button v-for="tab in [{key:'studio',label:'🏭 制作公司'},{key:'platform',label:'📺 播出平台'},{key:'genre',label:'🏷️ 题材'},{key:'ranking',label:'🏆 排行'}]"
+              :key="tab.key" @click="animeSubTab = tab.key"
+              class="px-3 py-1.5 rounded-md text-sm font-medium transition-all"
+              :class="animeSubTab === tab.key ? 'bg-blue-500/25 text-blue-200' : 'text-gray-400 hover:text-white'">
+              {{ tab.label }}
+            </button>
+          </div>
 
           <!-- Anime: Studio -->
-          <div>
-            <h2 class="text-base font-bold text-blue-300 mb-3">🏭 制作公司</h2>
+          <div v-if="animeSubTab === 'studio'" class="space-y-4">
             <div class="space-y-3">
               <div v-for="studio in animeStudios" :key="studio.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
                 <div class="flex items-start justify-between mb-2">
@@ -353,54 +363,40 @@ function getScoreColor(score) {
                 </div>
               </div>
             </div>
+            <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">制作公司 × 作品数 × 评分</h3>
+              <div id="anime-studio-bar" style="height: 300px"></div>
+            </div>
           </div>
 
-          <!-- Anime: Studio Chart -->
-          <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-            <h3 class="text-sm font-medium text-gray-400 mb-2">制作公司 × 作品数 × 评分</h3>
-            <div id="anime-studio-bar" style="height: 300px"></div>
-          </div>
-
-          <!-- Anime: Broadcast Platform -->
-          <div>
-            <h2 class="text-base font-bold text-blue-300 mb-3">📺 播出平台</h2>
-            <div class="space-y-3">
-              <div v-for="plat in animePlatforms" :key="plat.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-                <div class="flex items-center justify-between mb-2">
-                  <h3 class="font-bold text-white">{{ plat.name }}</h3>
-                  <span class="text-sm text-gray-400">{{ plat.projects.length }} 部
-                    <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
+          <!-- Anime: Platform -->
+          <div v-if="animeSubTab === 'platform'" class="space-y-3">
+            <div v-for="plat in animePlatforms" :key="plat.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-white">{{ plat.name }}</h3>
+                <span class="text-sm text-gray-400">{{ plat.projects.length }} 部
+                  <span v-if="plat.avgScore"> · 均分 <span :class="getScoreColor(parseFloat(plat.avgScore))">{{ plat.avgScore }}</span></span>
+                </span>
+              </div>
+              <div class="space-y-1">
+                <div v-for="ip in plat.projects" :key="ip.id" @click="goDetail(ip.id)"
+                  class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                  <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold" :class="tierClass(ip.production_tier)">
+                    {{ ip.production_tier }}
                   </span>
-                </div>
-                <div class="space-y-1">
-                  <div v-for="ip in plat.projects" :key="ip.id" @click="goDetail(ip.id)"
-                    class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
-                    <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-                    <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold" :class="tierClass(ip.production_tier)">
-                      {{ ip.production_tier }}
-                    </span>
-                    <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
-                  </div>
+                  <span v-if="ip.douban_score" :class="getScoreColor(ip.douban_score)" class="font-medium">{{ ip.douban_score }}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Anime: Genre + Score Charts -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Anime: Genre -->
+          <div v-if="animeSubTab === 'genre'" class="space-y-4">
             <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-              <h3 class="text-sm font-medium text-gray-400 mb-2">动漫题材分布</h3>
+              <h3 class="text-sm font-medium text-gray-400 mb-2">题材分布</h3>
               <div id="anime-genre-pie" style="height: 280px"></div>
             </div>
-            <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-              <h3 class="text-sm font-medium text-gray-400 mb-2">动漫评分分布（豆瓣）</h3>
-              <div id="anime-score-dist" style="height: 280px"></div>
-            </div>
-          </div>
-
-          <!-- Anime: Genre Cards -->
-          <div>
-            <h2 class="text-base font-bold text-blue-300 mb-3">🏷️ 题材标签</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               <div v-for="genre in animeGenres" :key="genre.name" class="bg-[#14142a] border border-white/5 rounded-xl p-3">
                 <div class="flex items-center justify-between">
@@ -414,21 +410,24 @@ function getScoreColor(score) {
             </div>
           </div>
 
-          <!-- Anime: Top Rated -->
-          <div v-if="animeTopRated.length" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-            <h3 class="text-sm font-medium text-gray-400 mb-3">🏆 动漫评分排行</h3>
-            <div class="space-y-2">
-              <div v-for="(ip, i) in animeTopRated" :key="ip.id" @click="goDetail(ip.id)"
-                class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
-                <span class="font-bold w-5 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
-                <span class="text-white flex-1 truncate">{{ ip.name }}</span>
-                <span v-if="ip.studio" class="text-gray-500 text-xs">{{ ip.studio }}</span>
-                <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold" :class="tierClass(ip.production_tier)">
-                  {{ ip.production_tier }}
-                </span>
-                <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>
+          <!-- Anime: Ranking -->
+          <div v-if="animeSubTab === 'ranking'">
+            <div v-if="animeTopRated.length" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-3">豆瓣评分排行</h3>
+              <div class="space-y-2">
+                <div v-for="(ip, i) in animeTopRated" :key="ip.id" @click="goDetail(ip.id)"
+                  class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                  <span class="font-bold w-5 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
+                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                  <span v-if="ip.studio" class="text-gray-500 text-xs">{{ ip.studio }}</span>
+                  <span v-if="ip.production_tier" class="text-[11px] px-1.5 py-0.5 rounded font-bold" :class="tierClass(ip.production_tier)">
+                    {{ ip.production_tier }}
+                  </span>
+                  <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>
+                </div>
               </div>
             </div>
+            <div v-else class="text-center py-10 text-gray-500">暂无评分数据</div>
           </div>
         </template>
       </div>
