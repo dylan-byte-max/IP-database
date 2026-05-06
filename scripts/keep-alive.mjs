@@ -2,10 +2,8 @@
  * Supabase Keep-Alive Script
  * 
  * 每天定时执行，向 Supabase 发送数据库请求，防止免费项目因 7 天不活跃被暂停。
- * 通过 GitHub Actions 调度运行。
+ * 使用原生 fetch（Node 18+内置），无需任何额外依赖。
  */
-
-import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.SUPABASE_URL
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -15,58 +13,65 @@ if (!supabaseUrl || !supabaseKey) {
   process.exit(1)
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey)
+const headers = {
+  'apikey': supabaseKey,
+  'Authorization': `Bearer ${supabaseKey}`,
+  'Content-Type': 'application/json'
+}
 
 async function keepAlive() {
   const timestamp = new Date().toISOString()
   console.log(`[${timestamp}] Starting keep-alive ping...`)
+  let success = 0
 
-  // Method 1: Query the ip_works table (your main table)
+  // Method 1: Query ip_works table via REST API
   try {
-    const { data, error } = await supabase
-      .from('ip_works')
-      .select('id, title')
-      .limit(1)
-
-    if (error) {
-      console.error('  [FAIL] ip_works query error:', error.message)
+    const res = await fetch(`${supabaseUrl}/rest/v1/ip_works?select=id,title&limit=1`, { headers })
+    if (res.ok) {
+      const data = await res.json()
+      console.log(`  [OK] ip_works query success, got ${data.length} row(s)`)
+      success++
     } else {
-      console.log(`  [OK] ip_works query success, got ${data?.length || 0} row(s)`)
+      console.error(`  [FAIL] ip_works query: ${res.status} ${res.statusText}`)
     }
   } catch (e) {
     console.error('  [FAIL] ip_works query exception:', e.message)
   }
 
-  // Method 2: Check auth service
+  // Method 2: Check auth health
   try {
-    const { error } = await supabase.auth.getSession()
-    if (error) {
-      console.error('  [FAIL] Auth check error:', error.message)
+    const res = await fetch(`${supabaseUrl}/auth/v1/health`, {
+      headers: { 'apikey': supabaseKey }
+    })
+    if (res.ok) {
+      console.log('  [OK] Auth service healthy')
+      success++
     } else {
-      console.log('  [OK] Auth service responding')
+      console.error(`  [FAIL] Auth health: ${res.status} ${res.statusText}`)
     }
   } catch (e) {
-    console.error('  [FAIL] Auth check exception:', e.message)
+    console.error('  [FAIL] Auth health exception:', e.message)
   }
 
-  // Method 3: Storage API check
+  // Method 3: List storage buckets
   try {
-    const { data, error } = await supabase.storage.listBuckets()
-    if (error) {
-      console.error('  [FAIL] Storage API error:', error.message)
+    const res = await fetch(`${supabaseUrl}/storage/v1/bucket`, { headers })
+    if (res.ok) {
+      const data = await res.json()
+      console.log(`  [OK] Storage API responding, ${data.length} bucket(s)`)
+      success++
     } else {
-      console.log(`  [OK] Storage API responding, ${data?.length || 0} bucket(s)`)
+      console.error(`  [FAIL] Storage API: ${res.status} ${res.statusText}`)
     }
   } catch (e) {
     console.error('  [FAIL] Storage API exception:', e.message)
   }
 
-  console.log(`[${new Date().toISOString()}] Keep-alive complete.`)
+  console.log(`[${new Date().toISOString()}] Keep-alive complete. ${success}/3 checks passed.`)
+
+  if (success === 0) {
+    process.exit(1)
+  }
 }
 
 keepAlive()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('Keep-alive failed:', err)
-    process.exit(1)
-  })
