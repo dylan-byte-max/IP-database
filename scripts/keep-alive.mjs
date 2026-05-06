@@ -24,18 +24,18 @@ async function keepAlive() {
   console.log(`[${timestamp}] Starting keep-alive ping...`)
   let success = 0
 
-  // Method 1: Query ip_works table via REST API
+  // Method 1: Query ips table via REST API
   try {
-    const res = await fetch(`${supabaseUrl}/rest/v1/ip_works?select=id,title&limit=1`, { headers })
+    const res = await fetch(`${supabaseUrl}/rest/v1/ips?select=id,title&limit=1`, { headers })
     if (res.ok) {
       const data = await res.json()
-      console.log(`  [OK] ip_works query success, got ${data.length} row(s)`)
+      console.log(`  [OK] ips query success, got ${data.length} row(s)`)
       success++
     } else {
-      console.error(`  [FAIL] ip_works query: ${res.status} ${res.statusText}`)
+      console.error(`  [FAIL] ips query: ${res.status} ${res.statusText}`)
     }
   } catch (e) {
-    console.error('  [FAIL] ip_works query exception:', e.message)
+    console.error('  [FAIL] ips query exception:', e.message)
   }
 
   // Method 2: Check auth health
