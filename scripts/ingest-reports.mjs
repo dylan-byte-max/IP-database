@@ -132,13 +132,22 @@ function parseMdReport(md) {
   }
 
   // ===== AI 摘要 =====
-  for (const p of [
-    /一句话定位\*\*\s*[：:]\s*(.+?)(?:\n|$)/m,
-    /^>\s*\*\*一句话定位\*\*\s*[：:]\s*(.+?)$/m,
-    /整体定位\s*\|\s*\*?\*?(.+?)\*?\*?\s*\|/m,
-  ]) {
-    const m = md.match(p)
-    if (m) { result.ai_summary = clean(m[1]).substring(0, 400); break }
+  // 优先显式注释 <!-- summary: xxx -->
+  const summaryMeta = md.match(/<!--\s*summary\s*:\s*([\s\S]+?)\s*-->/i)
+  if (summaryMeta) {
+    result.ai_summary = clean(summaryMeta[1]).substring(0, 400)
+  } else {
+    for (const p of [
+      // > **一句话定位**：xxx
+      /\*\*一句话定位\*\*\s*[：:]\s*(.+?)(?:\n|$)/m,
+      /一句话定位\s*[：:]\s*(.+?)(?:\n|$)/m,
+      // | **整体定位** | **xxx** |  （标签自带 ** 包裹）
+      /\|\s*\*{0,2}整体定位\*{0,2}\s*\|\s*\*{0,2}(.+?)\*{0,2}\s*\|/m,
+      /整体定位\s*\|\s*\*{0,2}(.+?)\*{0,2}\s*\|/m,
+    ]) {
+      const m = md.match(p)
+      if (m) { result.ai_summary = clean(m[1]).substring(0, 400); break }
+    }
   }
 
   // ===== 标签 =====
