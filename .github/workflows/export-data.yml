@@ -1,0 +1,40 @@
+name: Export Supabase Data
+
+on: workflow_dispatch
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export data from Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/export-to-json.mjs
+
+      - name: Commit exported data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p data
+          cp export/ips-index.json data/ips-index.json
+          rm -rf data/reports
+          cp -r export/reports data/reports
+          git add data
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "data: 从 Supabase 导出全量数据到仓库 [skip ci]"
+            git push
+          fi
+
+      - name: Upload full backup as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-full-backup
+          path: export/ips-full.json
+          retention-days: 90
