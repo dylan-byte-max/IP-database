@@ -3701,46 +3701,6 @@
     "has_report": true
   },
   {
-    "id": "0e0392b6-4564-411d-843c-d000f7122cd7",
-    "created_at": "2026-05-08T04:29:57.100131+00:00",
-    "updated_at": "2026-05-08T04:29:57.100131+00:00",
-    "type": "novel",
-    "name": "日月同错",
-    "ai_summary": "国产漫画剧本天花板：三线时空因果叙事+六年完美收官+腾讯动漫9.9分。圈内封神、圈外没听过，极度需要高质量2D动画化来突破知名度天花板",
-    "genre_tags": [
-      "三线叙事",
-      "跨时空因果",
-      "人尸大战",
-      "东方玄幻",
-      "道术",
-      "环形叙事",
-      "群像",
-      "热血少年"
-    ],
-    "douban_score": 8.6,
-    "author": "第年秒",
-    "platform": "腾讯动漫",
-    "word_count": null,
-    "serial_status": null,
-    "yousuu_score": null,
-    "qidian_score": null,
-    "adaptation_score": 4.1,
-    "studio": null,
-    "director": null,
-    "broadcast_platforms": [],
-    "source_type": null,
-    "source_name": null,
-    "production_tier": null,
-    "total_seasons": null,
-    "total_episodes": null,
-    "bangumi_score": null,
-    "bilibili_followers": null,
-    "seasons": null,
-    "art_style": null,
-    "audience_target": null,
-    "has_report": true
-  },
-  {
     "id": "940ee030-4839-4a9a-803d-7afed39c0e52",
     "created_at": "2026-05-08T04:33:19.663215+00:00",
     "updated_at": "2026-05-08T04:33:19.663215+00:00",
@@ -4661,5 +4621,31 @@
     "source_type": "漫画（衍生动态漫/真人剧《玫瑰丛生》）",
     "total_episodes": 330,
     "adaptation_score": 4.2
+  },
+  {
+    "id": "d10ace4d-49f0-4380-82ed-52f6a07d0cae",
+    "created_at": "2026-07-30T07:45:54.695Z",
+    "updated_at": "2026-07-30T07:46:22.714Z",
+    "genre_tags": [
+      "玄幻",
+      "热血",
+      "少年漫画",
+      "时间线",
+      "因果律",
+      "不死尸",
+      "群像",
+      "国漫",
+      "腾讯动漫"
+    ],
+    "broadcast_platforms": [],
+    "type": "comic",
+    "name": "日月同错",
+    "author": "第年秒（胡伟）",
+    "platform": "腾讯动漫",
+    "serial_status": "已完结（2019.09.13-2025.11.11）",
+    "source_type": "原创漫画（已改编动态漫）",
+    "adaptation_score": 4.1,
+    "ai_summary": "腾讯动漫高口碑原创少年玄幻漫画，以“三个时代同时弑杀万业尸仙”的跨时空因果叙事为核心，腾讯动漫评分9.9、人气63亿+、收藏103万+，虽未大范围破圈但在核心国漫读者中具备“神作”级口碑，是强文本、强世界观、强动画化潜力的漫画 IP。",
+    "has_report": true
   }
 ]
