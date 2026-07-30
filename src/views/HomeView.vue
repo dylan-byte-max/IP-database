@@ -6,7 +6,16 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 const ipList = ref([])
 const loading = ref(true)
-const activeTab = ref('all') // all / novel / anime
+const loadError = ref('')
+const activeTab = ref('all') // all / novel / anime / comic
+
+// ===== 类型元数据（小说紫 / 动漫蓝 / 漫画粉）=====
+const TYPE_META = {
+  novel: { icon: '📖', label: '小说', badge: 'bg-purple-500/20 text-purple-300', text: 'text-purple-300' },
+  anime: { icon: '🎬', label: '动漫', badge: 'bg-blue-500/20 text-blue-300', text: 'text-blue-300' },
+  comic: { icon: '🎨', label: '漫画', badge: 'bg-pink-500/20 text-pink-300', text: 'text-pink-300' },
+}
+function typeMeta(t) { return TYPE_META[t] || TYPE_META.novel }
 const searchQuery = ref('')
 const sortBy = ref('created_at')
 const filterStudio = ref('')
@@ -18,11 +27,22 @@ onMounted(async () => {
 
 async function fetchIPs() {
   loading.value = true
-  const { data, error } = await supabase
-    .from('ips')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (!error && data) ipList.value = data
+  loadError.value = ''
+  try {
+    const { data, error } = await supabase
+      .from('ips')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) {
+      // 关键：区分「请求失败」与「真的没数据」，避免把连接故障显示成空库
+      loadError.value = error.message || '数据库请求失败'
+    } else if (data) {
+      ipList.value = data
+    }
+  } catch (e) {
+    // 网络层异常（如 Supabase 项目被暂停导致域名不解析）会走到这里
+    loadError.value = e?.message || '无法连接到数据库'
+  }
   loading.value = false
 }
 
@@ -69,7 +89,7 @@ const platforms = computed(() => {
     if (ip.type === 'anime' && ip.broadcast_platforms) {
       ip.broadcast_platforms.forEach(pl => p.add(pl))
     }
-    if (ip.type === 'novel' && ip.platform) p.add(ip.platform)
+    if ((ip.type === 'novel' || ip.type === 'comic') && ip.platform) p.add(ip.platform)
   })
   return [...p].sort()
 })
@@ -78,6 +98,7 @@ const stats = computed(() => ({
   total: ipList.value.length,
   novels: ipList.value.filter(i => i.type === 'novel').length,
   animes: ipList.value.filter(i => i.type === 'anime').length,
+  comics: ipList.value.filter(i => i.type === 'comic').length,
 }))
 
 function goDetail(id) {
@@ -105,6 +126,8 @@ function getScoreBadgeClass(score) {
         <span class="text-purple-300">📖 {{ stats.novels }}</span>
         <span class="text-gray-600 mx-1">|</span>
         <span class="text-blue-300">🎬 {{ stats.animes }}</span>
+        <span class="text-gray-600 mx-1">|</span>
+        <span class="text-pink-300">🎨 {{ stats.comics }}</span>
       </div>
     </div>
 
@@ -112,7 +135,7 @@ function getScoreBadgeClass(score) {
     <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6">
       <!-- Tabs -->
       <div class="flex bg-[#1a1a3a] rounded-lg p-0.5">
-        <button v-for="tab in [{key:'all',label:'全部'},{key:'novel',label:'📖 小说'},{key:'anime',label:'🎬 动漫'}]"
+        <button v-for="tab in [{key:'all',label:'全部'},{key:'novel',label:'📖 小说'},{key:'anime',label:'🎬 动漫'},{key:'comic',label:'🎨 漫画'}]"
           :key="tab.key"
           @click="activeTab = tab.key"
           class="px-3 py-1.5 rounded-md text-sm font-medium transition-all"
@@ -149,6 +172,27 @@ function getScoreBadgeClass(score) {
       <div class="w-8 h-8 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
     </div>
 
+    <!-- Load Error：明确区分连接故障与空数据 -->
+    <div v-else-if="loadError" class="text-center py-16">
+      <div class="text-5xl mb-4">⚠️</div>
+      <p class="text-red-300 text-lg mb-2">数据库连接失败</p>
+      <p class="text-gray-500 text-sm mb-1 max-w-lg mx-auto">{{ loadError }}</p>
+      <p class="text-gray-500 text-sm mb-6">
+        数据<span class="text-gray-300">并未丢失</span>。常见原因：Supabase 免费项目因长期无活动被暂停，
+        需登录 Supabase 控制台点击 Restore 恢复。
+      </p>
+      <div class="flex items-center justify-center gap-3">
+        <button @click="fetchIPs"
+          class="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors">
+          🔄 重试
+        </button>
+        <a href="https://supabase.com/dashboard/project/ckynqqqyrjhoxoqttvjo" target="_blank" rel="noreferrer"
+          class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-200 transition-colors">
+          前往 Supabase 控制台
+        </a>
+      </div>
+    </div>
+
     <!-- Empty state -->
     <div v-else-if="filteredList.length === 0" class="text-center py-20">
       <div class="text-5xl mb-4">{{ ipList.length === 0 ? '📭' : '🔍' }}</div>
@@ -175,8 +219,8 @@ function getScoreBadgeClass(score) {
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
               <span class="text-xs px-2 py-0.5 rounded-full font-medium"
-                :class="ip.type === 'novel' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'">
-                {{ ip.type === 'novel' ? '📖 小说' : '🎬 动漫' }}
+                :class="typeMeta(ip.type).badge">
+                {{ typeMeta(ip.type).icon }} {{ typeMeta(ip.type).label }}
               </span>
               <span v-if="ip.production_tier" class="text-xs px-1.5 py-0.5 rounded font-bold"
                 :class="ip.production_tier.includes('S+') ? 'bg-red-500/15 text-red-300'
@@ -206,7 +250,7 @@ function getScoreBadgeClass(score) {
             <span class="text-gray-600">🏭</span>
             <span class="truncate">{{ ip.studio }}</span>
           </div>
-          <div v-if="ip.type === 'novel' && ip.author" class="flex items-center gap-1.5">
+          <div v-if="(ip.type === 'novel' || ip.type === 'comic') && ip.author" class="flex items-center gap-1.5">
             <span class="text-gray-600">✍️</span>
             <span>{{ ip.author }}</span>
           </div>
@@ -214,7 +258,7 @@ function getScoreBadgeClass(score) {
             <span class="text-gray-600">📺</span>
             <span class="truncate">{{ ip.broadcast_platforms.join(' / ') }}</span>
           </div>
-          <div v-if="ip.type === 'novel' && ip.platform" class="flex items-center gap-1.5">
+          <div v-if="(ip.type === 'novel' || ip.type === 'comic') && ip.platform" class="flex items-center gap-1.5">
             <span class="text-gray-600">📚</span>
             <span>{{ ip.platform }}</span>
           </div>

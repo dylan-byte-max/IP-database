@@ -22,6 +22,8 @@ const form = ref({
   broadcast_platforms: '',
   source_type: '',
   source_name: '',
+  serial_status: '',
+  word_count: '',
   douban_score: null,
   bangumi_score: null,
   yousuu_score: null,
@@ -101,13 +103,15 @@ function parseMdReport(md) {
   }
 
   // ===== Detect type =====
-  // Priority 1: HTML comment metadata (<!-- type: novel --> or <!-- type: anime -->)
-  const metaType = md.match(/<!--\s*type:\s*(novel|anime)\s*-->/i)
+  // Priority 1: HTML comment metadata (<!-- type: novel|anime|comic -->)
+  const metaType = md.match(/<!--\s*type:\s*(novel|anime|comic)\s*-->/i)
   if (metaType) {
     result.type = metaType[1].toLowerCase()
   }
-  // Priority 2: Title keywords ("小说深度研究" vs "动漫深度研究")
-  else if (md.match(/小说深度研究|小说研究报告/)) {
+  // Priority 2: Title keywords
+  else if (md.match(/漫画深度研究|漫画研究报告/)) {
+    result.type = 'comic'
+  } else if (md.match(/小说深度研究|小说研究报告/)) {
     result.type = 'novel'
   } else if (md.match(/动漫深度研究|动漫研究报告/)) {
     result.type = 'anime'
@@ -116,9 +120,12 @@ function parseMdReport(md) {
   else {
     const novelMarkers = ['作者档案', '优书网', '影视化改编潜力', '改编适配性评分', '起点中文网', '番茄小说', '总字数']
     const animeMarkers = ['制作团队', '播出平台', '各季详情', 'Bangumi', '追番人数', '画风与制作', '制作水准']
+    const comicMarkers = ['快看漫画', '腾讯动漫', '连载平台', '话数', '漫画家', '人气值', '动态漫']
     const novelHits = novelMarkers.filter(m => md.includes(m)).length
     const animeHits = animeMarkers.filter(m => md.includes(m)).length
-    result.type = animeHits > novelHits ? 'anime' : 'novel'
+    const comicHits = comicMarkers.filter(m => md.includes(m)).length
+    const max = Math.max(novelHits, animeHits, comicHits)
+    result.type = max === 0 ? 'novel' : comicHits === max ? 'comic' : animeHits === max ? 'anime' : 'novel'
   }
 
   // ===== Extract name from title =====
@@ -330,7 +337,7 @@ async function uploadToSupabase() {
 function resetForm() {
   form.value = {
     type: 'anime', name: '', studio: '', director: '', author: '', platform: '',
-    broadcast_platforms: '', source_type: '', source_name: '',
+    broadcast_platforms: '', source_type: '', source_name: '', serial_status: '', word_count: '',
     douban_score: null, bangumi_score: null, yousuu_score: null, adaptation_score: null,
     production_tier: '', total_seasons: null, total_episodes: null,
     genre_tags: '', ai_summary: '', raw_md: '',
@@ -386,7 +393,7 @@ function resetForm() {
       <div v-if="form.name && fileContent" class="bg-[#14142a] border border-white/5 rounded-xl p-5">
         <h3 class="text-sm font-medium text-gray-400 mb-3">📋 解析结果预览</h3>
         <div class="grid grid-cols-2 gap-3 text-sm">
-          <div><span class="text-gray-500">类型：</span><span class="text-white">{{ form.type === 'novel' ? '📖 小说' : '🎬 动漫' }}</span></div>
+          <div><span class="text-gray-500">类型：</span><span class="text-white">{{ form.type === 'novel' ? '📖 小说' : form.type === 'comic' ? '🎨 漫画' : '🎬 动漫' }}</span></div>
           <div><span class="text-gray-500">名称：</span><span class="text-white font-medium">{{ form.name }}</span></div>
           <div v-if="form.studio"><span class="text-gray-500">制作公司：</span><span class="text-gray-200">{{ form.studio }}</span></div>
           <div v-if="form.author"><span class="text-gray-500">作者：</span><span class="text-gray-200">{{ form.author }}</span></div>
@@ -412,6 +419,11 @@ function resetForm() {
             class="flex-1 py-2.5 rounded-lg text-sm font-medium border transition-all"
             :class="form.type === 'novel' ? 'border-purple-500 bg-purple-500/10 text-purple-300' : 'border-white/5 text-gray-400'">
             📖 小说
+          </button>
+          <button @click="form.type = 'comic'"
+            class="flex-1 py-2.5 rounded-lg text-sm font-medium border transition-all"
+            :class="form.type === 'comic' ? 'border-pink-500 bg-pink-500/10 text-pink-300' : 'border-white/5 text-gray-400'">
+            🎨 漫画
           </button>
         </div>
 
@@ -496,6 +508,46 @@ function resetForm() {
           </div>
         </template>
 
+        <!-- Comic-specific fields -->
+        <template v-if="form.type === 'comic'">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">作者/漫画家</label>
+              <input v-model="form.author" type="text" placeholder="如：宫缘乾"
+                class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-pink-500/50" />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">连载平台</label>
+              <input v-model="form.platform" type="text" placeholder="如：快看漫画"
+                class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-pink-500/50" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">连载状态</label>
+              <input v-model="form.serial_status" type="text" placeholder="如：连载中 / 已完结"
+                class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-pink-500/50" />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">话数</label>
+              <input v-model.number="form.total_episodes" type="number" placeholder="如：330"
+                class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-pink-500/50" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">衍生类型</label>
+              <input v-model="form.source_type" type="text" placeholder="如：动态漫 / 真人剧改编"
+                class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white placeholder-gray-600 focus:outline-none focus:border-pink-500/50" />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">改编潜力（/5）</label>
+              <input v-model.number="form.adaptation_score" type="number" step="0.1" min="0" max="5"
+                class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-pink-500/50" />
+            </div>
+          </div>
+        </template>
+
         <!-- Scores -->
         <div class="grid grid-cols-3 gap-3">
           <div>
@@ -508,7 +560,7 @@ function resetForm() {
             <input v-model.number="form.bangumi_score" type="number" step="0.1" min="0" max="10"
               class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/50" />
           </div>
-          <div v-else>
+          <div v-if="form.type === 'novel'">
             <label class="block text-sm text-gray-400 mb-1">优书网</label>
             <input v-model.number="form.yousuu_score" type="number" step="0.1" min="0" max="10"
               class="w-full px-3 py-2 bg-[#1a1a3a] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500/50" />

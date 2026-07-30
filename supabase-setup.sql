@@ -8,7 +8,7 @@ CREATE TABLE ips (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
 
   -- 通用字段
-  type TEXT NOT NULL CHECK (type IN ('novel', 'anime')),  -- 小说 or 动漫
+  type TEXT NOT NULL CHECK (type IN ('novel', 'anime', 'comic')),  -- 小说 / 动漫 / 漫画
   name TEXT NOT NULL,                                      -- 作品名称
   raw_md TEXT,                                             -- 完整 MD 报告
   ai_summary TEXT,                                         -- AI 一句话定位

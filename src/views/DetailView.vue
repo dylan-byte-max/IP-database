@@ -25,6 +25,14 @@ const renderedMd = computed(() => {
   return marked(ip.value.raw_md, { breaks: true })
 })
 
+// ===== 类型元数据（小说紫 / 动漫蓝 / 漫画粉）=====
+const TYPE_META = {
+  novel: { icon: '📖', label: '小说', text: 'text-purple-300' },
+  anime: { icon: '🎬', label: '动漫', text: 'text-blue-300' },
+  comic: { icon: '🎨', label: '漫画', text: 'text-pink-300' },
+}
+const typeMeta = computed(() => TYPE_META[ip.value?.type] || TYPE_META.novel)
+
 async function deleteIP() {
   const { error } = await supabase.from('ips').delete().eq('id', ip.value.id)
   if (!error) router.push('/')
@@ -67,9 +75,9 @@ function getScoreColor(score) {
           <!-- Type Badge -->
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
             <div class="flex items-center gap-2 mb-3">
-              <span class="text-2xl">{{ ip.type === 'novel' ? '📖' : '🎬' }}</span>
-              <span class="text-sm font-medium" :class="ip.type === 'novel' ? 'text-purple-300' : 'text-blue-300'">
-                {{ ip.type === 'novel' ? '小说' : '动漫' }}
+              <span class="text-2xl">{{ typeMeta.icon }}</span>
+              <span class="text-sm font-medium" :class="typeMeta.text">
+                {{ typeMeta.label }}
               </span>
             </div>
             <h2 class="text-lg font-bold text-white mb-2">{{ ip.name }}</h2>
@@ -124,6 +132,10 @@ function getScoreColor(score) {
               <div v-if="ip.platform" class="flex justify-between">
                 <span class="text-gray-500">平台</span>
                 <span class="text-gray-200">{{ ip.platform }}</span>
+              </div>
+              <div v-if="ip.serial_status" class="flex justify-between">
+                <span class="text-gray-500">连载状态</span>
+                <span class="text-gray-200">{{ ip.serial_status }}</span>
               </div>
               <div v-if="ip.source_type" class="flex justify-between">
                 <span class="text-gray-500">原著类型</span>
