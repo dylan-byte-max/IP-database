@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { supabase } from '../lib/supabase.js'
+import { fetchIPById } from '../lib/data.js'
 import { marked } from 'marked'
 
 const route = useRoute()
@@ -11,12 +11,11 @@ const loading = ref(true)
 const showDeleteConfirm = ref(false)
 
 onMounted(async () => {
-  const { data, error } = await supabase
-    .from('ips')
-    .select('*')
-    .eq('id', route.params.id)
-    .single()
-  if (!error && data) ip.value = data
+  try {
+    ip.value = await fetchIPById(route.params.id)
+  } catch {
+    ip.value = null
+  }
   loading.value = false
 })
 
@@ -33,10 +32,11 @@ const TYPE_META = {
 }
 const typeMeta = computed(() => TYPE_META[ip.value?.type] || TYPE_META.novel)
 
-async function deleteIP() {
-  const { error } = await supabase.from('ips').delete().eq('id', ip.value.id)
-  if (!error) router.push('/')
-}
+// 静态站点无后端，删除通过仓库操作完成（见下方提示）
+const deleteHint = computed(() => ({
+  file: `data/reports/${ip.value?.id || ''}.md`,
+  name: ip.value?.name || '',
+}))
 
 function getScoreColor(score) {
   if (!score) return '#666'
@@ -176,19 +176,25 @@ function getScoreColor(score) {
 
           <!-- Actions -->
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
-            <button @click="showDeleteConfirm = true"
-              class="w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
-              🗑️ 删除记录
+            <button @click="showDeleteConfirm = !showDeleteConfirm"
+              class="w-full px-3 py-2 text-sm text-gray-400 hover:bg-white/5 rounded-lg transition-colors">
+              🗑️ 如何删除此记录
             </button>
           </div>
 
-          <!-- Delete Confirm -->
-          <div v-if="showDeleteConfirm" class="bg-red-900/20 border border-red-500/30 rounded-xl p-4">
-            <p class="text-sm text-red-300 mb-3">确定要删除「{{ ip.name }}」吗？此操作不可撤销。</p>
-            <div class="flex gap-2">
-              <button @click="deleteIP" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded text-sm text-white">确认删除</button>
-              <button @click="showDeleteConfirm = false" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm text-gray-300">取消</button>
-            </div>
+          <!-- Delete Guide（静态站点：删除走仓库） -->
+          <div v-if="showDeleteConfirm" class="bg-[#1a1a3a] border border-white/10 rounded-xl p-4">
+            <p class="text-sm text-gray-300 mb-2">删除「{{ deleteHint.name }}」</p>
+            <p class="text-xs text-gray-500 mb-3">
+              本站数据存放在 Git 仓库中，删除需在仓库操作（可随时回滚）：
+            </p>
+            <ol class="text-xs text-gray-400 space-y-1.5 list-decimal list-inside mb-3">
+              <li>删除文件 <code class="text-pink-300 break-all">{{ deleteHint.file }}</code></li>
+              <li>从 <code class="text-pink-300">data/ips-index.json</code> 中移除对应条目</li>
+              <li>提交并推送，Vercel 自动重新部署</li>
+            </ol>
+            <button @click="showDeleteConfirm = false"
+              class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300">收起</button>
           </div>
         </div>
       </div>

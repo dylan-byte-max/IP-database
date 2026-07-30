@@ -1,25 +1,29 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { supabase } from '../lib/supabase.js'
+import { fetchIPs } from '../lib/data.js'
 import { useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 
 const router = useRouter()
 const ipList = ref([])
 const loading = ref(true)
-const activeSection = ref('overview') // overview | novel | anime
+const activeSection = ref('overview') // overview | novel | anime | comic
 const novelSubTab = ref('platform')   // platform | genre | ranking
 const animeSubTab = ref('studio')     // studio | platform | genre | ranking
+const comicSubTab = ref('platform')   // platform | genre | ranking
 
 onMounted(async () => {
-  const { data } = await supabase.from('ips').select('*').order('created_at', { ascending: false })
-  if (data) ipList.value = data
+  try {
+    ipList.value = await fetchIPs()
+  } catch {
+    ipList.value = []
+  }
   loading.value = false
   await nextTick()
   renderCharts()
 })
 
-watch([activeSection, novelSubTab, animeSubTab], async () => {
+watch([activeSection, novelSubTab, animeSubTab, comicSubTab], async () => {
   await nextTick()
   renderCharts()
 })
@@ -27,6 +31,7 @@ watch([activeSection, novelSubTab, animeSubTab], async () => {
 // ===== Filtered lists =====
 const novels = computed(() => ipList.value.filter(i => i.type === 'novel'))
 const animes = computed(() => ipList.value.filter(i => i.type === 'anime'))
+const comics = computed(() => ipList.value.filter(i => i.type === 'comic'))
 
 // ===== Generic helpers =====
 function buildGroupMap(items, getKey, extra) {
@@ -63,6 +68,11 @@ const animePlatforms = computed(() => buildGroupMap(animes.value, ip => ip.broad
 const animeGenres = computed(() => buildGroupMap(animes.value, ip => ip.genre_tags || []))
 const animeTopRated = computed(() => [...animes.value].filter(i => i.douban_score).sort((a, b) => b.douban_score - a.douban_score).slice(0, 10))
 
+// ===== Comic Analytics =====
+const comicPlatforms = computed(() => buildGroupMap(comics.value, ip => ip.platform))
+const comicGenres = computed(() => buildGroupMap(comics.value, ip => ip.genre_tags || []))
+const comicTopPotential = computed(() => [...comics.value].filter(i => i.adaptation_score).sort((a, b) => b.adaptation_score - a.adaptation_score).slice(0, 10))
+
 // ===== Overview =====
 const overview = computed(() => {
   const scores = ipList.value.filter(i => i.douban_score).map(i => i.douban_score)
@@ -70,6 +80,7 @@ const overview = computed(() => {
     total: ipList.value.length,
     novels: novels.value.length,
     animes: animes.value.length,
+    comics: comics.value.length,
     avgScore: scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '-',
     topRated: [...ipList.value].filter(i => i.douban_score).sort((a, b) => b.douban_score - a.douban_score).slice(0, 5),
   }
@@ -95,6 +106,9 @@ function renderCharts() {
   }
   if (activeSection.value === 'anime' && animeSubTab.value === 'genre') {
     renderPie('anime-genre-pie', animes.value)
+  }
+  if (activeSection.value === 'comic' && comicSubTab.value === 'genre') {
+    renderPie('comic-genre-pie', comics.value)
   }
 }
 
@@ -195,7 +209,8 @@ function getScoreColor(score) {
         <button v-for="tab in [
           {key:'overview', label:'📈 总览'},
           {key:'novel', label:`📖 小说 (${novels.length})`},
-          {key:'anime', label:`🎬 动漫 (${animes.length})`}
+          {key:'anime', label:`🎬 动漫 (${animes.length})`},
+          {key:'comic', label:`🎨 漫画 (${comics.length})`}
         ]" :key="tab.key" @click="activeSection = tab.key"
           class="px-4 py-2 rounded-md text-sm font-medium transition-all"
           :class="activeSection === tab.key ? 'bg-purple-500/30 text-purple-200' : 'text-gray-400 hover:text-white'">
@@ -205,7 +220,7 @@ function getScoreColor(score) {
 
       <!-- ==================== OVERVIEW ==================== -->
       <div v-if="activeSection === 'overview'" class="space-y-6">
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4 text-center">
             <div class="text-3xl font-bold text-white">{{ overview.total }}</div>
             <div class="text-sm text-gray-400 mt-1">总 IP 数</div>
@@ -217,6 +232,10 @@ function getScoreColor(score) {
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4 text-center">
             <div class="text-3xl font-bold text-blue-300">{{ overview.animes }}</div>
             <div class="text-sm text-gray-400 mt-1">🎬 动漫</div>
+          </div>
+          <div class="bg-[#14142a] border border-white/5 rounded-xl p-4 text-center">
+            <div class="text-3xl font-bold text-pink-300">{{ overview.comics }}</div>
+            <div class="text-sm text-gray-400 mt-1">🎨 漫画</div>
           </div>
           <div class="bg-[#14142a] border border-white/5 rounded-xl p-4 text-center">
             <div class="text-3xl font-bold text-yellow-300">{{ overview.avgScore }}</div>
@@ -241,7 +260,10 @@ function getScoreColor(score) {
             <div v-for="(ip, i) in overview.topRated" :key="ip.id" @click="goDetail(ip.id)"
               class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
               <span class="text-lg font-bold w-6 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
-              <span class="text-xs px-1.5 py-0.5 rounded" :class="ip.type==='novel'?'bg-purple-500/20 text-purple-300':'bg-blue-500/20 text-blue-300'">{{ ip.type==='novel'?'📖':'🎬' }}</span>
+              <span class="text-xs px-1.5 py-0.5 rounded"
+                :class="ip.type==='novel'?'bg-purple-500/20 text-purple-300':ip.type==='comic'?'bg-pink-500/20 text-pink-300':'bg-blue-500/20 text-blue-300'">
+                {{ ip.type==='novel'?'📖':ip.type==='comic'?'🎨':'🎬' }}
+              </span>
               <span class="flex-1 text-sm text-white truncate">{{ ip.name }}</span>
               <span class="font-bold" :class="getScoreColor(ip.douban_score)">{{ ip.douban_score }}</span>
             </div>
@@ -428,6 +450,69 @@ function getScoreColor(score) {
               </div>
             </div>
             <div v-else class="text-center py-10 text-gray-500">暂无评分数据</div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ==================== COMIC ANALYTICS ==================== -->
+      <div v-if="activeSection === 'comic'" class="space-y-5">
+        <div v-if="comics.length === 0" class="text-center py-10 text-gray-500">暂无漫画数据</div>
+        <template v-else>
+          <div class="flex bg-[#14142a] rounded-lg p-0.5 w-fit">
+            <button v-for="tab in [{key:'platform',label:'📚 连载平台'},{key:'genre',label:'🏷️ 题材'},{key:'ranking',label:'🎯 改编潜力'}]"
+              :key="tab.key" @click="comicSubTab = tab.key"
+              class="px-3 py-1.5 rounded-md text-sm font-medium transition-all"
+              :class="comicSubTab === tab.key ? 'bg-pink-500/25 text-pink-200' : 'text-gray-400 hover:text-white'">
+              {{ tab.label }}
+            </button>
+          </div>
+
+          <div v-if="comicSubTab === 'platform'" class="space-y-3">
+            <div v-for="plat in comicPlatforms" :key="plat.name" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-bold text-white">{{ plat.name }}</h3>
+                <span class="text-sm text-gray-400">{{ plat.projects.length }} 部</span>
+              </div>
+              <div class="space-y-1">
+                <div v-for="ip in plat.projects" :key="ip.id" @click="goDetail(ip.id)"
+                  class="flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                  <span v-if="ip.author" class="text-gray-500 text-xs">{{ ip.author }}</span>
+                  <span v-if="ip.serial_status" class="text-[11px] px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-300">{{ ip.serial_status }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="comicSubTab === 'genre'" class="space-y-4">
+            <div class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-2">漫画题材分布</h3>
+              <div id="comic-genre-pie" style="height: 280px"></div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div v-for="genre in comicGenres" :key="genre.name" class="bg-[#14142a] border border-white/5 rounded-xl p-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-white text-sm">{{ genre.name }}</span>
+                  <span class="text-xs text-gray-400">{{ genre.projects.length }} 部</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="comicSubTab === 'ranking'">
+            <div v-if="comicTopPotential.length" class="bg-[#14142a] border border-white/5 rounded-xl p-4">
+              <h3 class="text-sm font-medium text-gray-400 mb-3">改编潜力排行</h3>
+              <div class="space-y-2">
+                <div v-for="(ip, i) in comicTopPotential" :key="ip.id" @click="goDetail(ip.id)"
+                  class="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors text-sm">
+                  <span class="font-bold w-5 text-center" :class="i===0?'text-yellow-400':i===1?'text-gray-300':i===2?'text-orange-400':'text-gray-500'">{{ i+1 }}</span>
+                  <span class="text-white flex-1 truncate">{{ ip.name }}</span>
+                  <span v-if="ip.author" class="text-gray-500 text-xs">{{ ip.author }}</span>
+                  <span class="font-bold text-yellow-300">{{ ip.adaptation_score }}/5</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-center py-10 text-gray-500">暂无改编潜力数据</div>
           </div>
         </template>
       </div>

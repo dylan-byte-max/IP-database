@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { supabase } from '../lib/supabase.js'
+import { fetchIPs as loadIPs } from '../lib/data.js'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -29,19 +29,9 @@ async function fetchIPs() {
   loading.value = true
   loadError.value = ''
   try {
-    const { data, error } = await supabase
-      .from('ips')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) {
-      // 关键：区分「请求失败」与「真的没数据」，避免把连接故障显示成空库
-      loadError.value = error.message || '数据库请求失败'
-    } else if (data) {
-      ipList.value = data
-    }
+    ipList.value = await loadIPs()
   } catch (e) {
-    // 网络层异常（如 Supabase 项目被暂停导致域名不解析）会走到这里
-    loadError.value = e?.message || '无法连接到数据库'
+    loadError.value = e?.message || '无法加载数据'
   }
   loading.value = false
 }
@@ -172,25 +162,19 @@ function getScoreBadgeClass(score) {
       <div class="w-8 h-8 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin"></div>
     </div>
 
-    <!-- Load Error：明确区分连接故障与空数据 -->
+    <!-- Load Error：明确区分加载故障与空数据 -->
     <div v-else-if="loadError" class="text-center py-16">
       <div class="text-5xl mb-4">⚠️</div>
-      <p class="text-red-300 text-lg mb-2">数据库连接失败</p>
+      <p class="text-red-300 text-lg mb-2">数据加载失败</p>
       <p class="text-gray-500 text-sm mb-1 max-w-lg mx-auto">{{ loadError }}</p>
       <p class="text-gray-500 text-sm mb-6">
-        数据<span class="text-gray-300">并未丢失</span>。常见原因：Supabase 免费项目因长期无活动被暂停，
-        需登录 Supabase 控制台点击 Restore 恢复。
+        数据<span class="text-gray-300">并未丢失</span>，存放在仓库 <code class="text-gray-400">data/</code> 目录中。
+        可能是部署缓存问题，稍后重试即可。
       </p>
-      <div class="flex items-center justify-center gap-3">
-        <button @click="fetchIPs"
-          class="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors">
-          🔄 重试
-        </button>
-        <a href="https://supabase.com/dashboard/project/ckynqqqyrjhoxoqttvjo" target="_blank" rel="noreferrer"
-          class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-200 transition-colors">
-          前往 Supabase 控制台
-        </a>
-      </div>
+      <button @click="fetchIPs"
+        class="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors">
+        🔄 重试
+      </button>
     </div>
 
     <!-- Empty state -->
@@ -200,7 +184,7 @@ function getScoreBadgeClass(score) {
         {{ ipList.length === 0 ? '还没有任何 IP 记录' : '没有匹配的结果' }}
       </p>
       <p v-if="ipList.length === 0" class="text-gray-500 text-sm mb-6">
-        使用 novel-research 或 anime-research Skill 生成报告后上传
+        使用 novel-research / anime-research Skill 生成报告，放入仓库 reports-inbox/ 目录即可自动入库
       </p>
       <button v-if="ipList.length === 0" @click="router.push('/upload')"
         class="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-sm font-medium transition-colors">

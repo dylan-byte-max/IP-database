@@ -1,0 +1,31 @@
+name: Ingest Reports
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'reports-inbox/**.md'
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ingest MD reports into data/
+        run: node scripts/ingest-reports.mjs
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data public/data reports-inbox
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "data: 自动入库新报告 [skip ci]"
+            git push
+          fi
